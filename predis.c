@@ -119,55 +119,76 @@ int set(char* dt_name, struct main_struct* ms, char* raw_val) {
 // -2: Pending deletion
 // -3: Data types did not match
 int get(char* dt_name, struct main_struct* ms, struct return_val* rval, int idx) {
-  *safe = false;
+  __atomic_store_n(safe, false, __ATOMIC_SEQ_CST);
   struct main_ele *ele = ms->elements + idx;
   if (ele->pending_delete) {
     return -2;
   }
-  if (strcmp(ele->type, dt_name) != 0) {
-    return -3;
-  }
   int dt_max = DATA_TYPE_COUNT;
   struct data_type* dt_list = data_types;
   struct data_type *dt = getDataType(dt_list, dt_max, dt_name);
   if (dt == NULL) {
-    *safe = true;
+    __atomic_store_n(safe, true, __ATOMIC_SEQ_CST);
     return -1;
   } else {
-    if (ele->pending_delete == true) { return -2; }
+    if (strcmp(ele->type, dt_name) != 0) {
+      return -3;
+    }
     void *val = ele->ptr;
     int errors = dt->getter(val, rval);
-    *safe = true;
+    __atomic_store_n(safe, true, __ATOMIC_SEQ_CST);
     return errors;
   }
 }
 
-int update(char* dt_name, struct main_struct* ms, char* raw_new_val, int idx) {
-  *safe = false;
+// Errors:
+// -1: Invalid data type
+// -2: Pending deletion
+// -3: Wrong data type
+// -4: Invalid updater name
+int update(char* dt_name, char* updater_name, struct main_struct* ms, char* raw_new_val, int idx) {
+  __atomic_store_n(safe, false, __ATOMIC_SEQ_CST);
   struct main_ele *ele = ms->elements + idx;
-  if (strcmp(ele->type, dt_name) != 0) {
-    return -3;
-  }
   int dt_max = DATA_TYPE_COUNT;
   struct data_type* dt_list = data_types;
   struct data_type *dt = getDataType(dt_list, dt_max, dt_name);
   if (dt == NULL) {
-    *safe = true;
+    __atomic_store_n(safe, true, __ATOMIC_SEQ_CST);
     return -1;
   } else {
+    if (strcmp(ele->type, dt_name) != 0) { return -3; }
     if (ele->pending_delete == true) { return -2; }
-    void *val = ele->ptr;
-    int errors = dt->updater(val, raw_new_val);
-    *safe = true;
+    const struct updater *updater = NULL;
+    for (int i = 0; i < dt->updater_length; i++) {
+      if (strcmp(dt->updaters[i].name, updater_name) == 0) {
+        updater = dt->updaters + i;
+        break;
+      }
+    }
+    if (updater == NULL) { return -4; }
+    int errors;
+    if (updater->safe) {
+      errors = (updater->func)(&(ele->ptr), raw_new_val);
+    } else {
+      void *val = ele->ptr;
+      void *clone_val = dt->clone(val);
+      errors = (updater->func)(&clone_val, raw_new_val);
+      while (!__sync_bool_compare_and_swap(&(ele->ptr), val, clone_val)) {
+        val = ele->ptr;
+        clone_val = dt->clone(val);
+        errors = (updater->func)(&clone_val, raw_new_val);
+      }
+    }
+    __atomic_store_n(safe, true, __ATOMIC_SEQ_CST);
     return errors;
   }
 }
 
-// Setters will use CAS for safety, which the data type can override
-// Deletion just sets the lock bit THEN the deleted bit, it won't
-// actually be freed until the next access (or in a background cleanup job)
+// Errors:
+// -1: Already deleted
 int del(struct main_struct *ms, int idx) {
   struct main_ele *ele = ms->elements + idx;
+  if (ele->pending_delete) { return -1; }
   ele->pending_delete = true;
   struct element_queue **queue = &(ms->deletion_queue);
   struct element_queue *dq_ele = malloc(sizeof(struct element_queue));

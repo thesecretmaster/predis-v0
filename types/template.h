@@ -6,5 +6,6 @@
 static int get(void*, struct return_val*);
 static int set(void**, char*);
 static int update(void**, char*);
+static void *clone(void*);
 
 #endif // TYPE_H

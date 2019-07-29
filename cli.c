@@ -12,6 +12,7 @@ int main() {
   // char *remainder;
   char *args[10];
   int idx;
+  int errors;
   struct return_val *rval = malloc(sizeof(struct return_val));
   while (line == NULL || strcmp(line, "exit") != 0) {
     free(line);
@@ -29,6 +30,14 @@ int main() {
       idx = strtol(args[1], NULL, 10);
       get(args[0], ms, rval, idx);
       printf("DONE: %s\n", rval->value);
+    } else if (strcmp(cmd, "update") == 0) {
+      args[0] = strtok(NULL, " "); // type
+      args[1] = strtok(NULL, " "); // updater name
+      args[2] = strtok(NULL, " "); // idx
+      args[3] = strtok(NULL, " "); // newval
+      idx = strtol(args[2], NULL, 10);
+      errors = update(args[0], args[1], ms, args[3], idx);
+      printf("DONE: %d\n", errors);
     } else if (strcmp(cmd, "exit") == 0) {
       printf("Exiting...\n");
     } else {

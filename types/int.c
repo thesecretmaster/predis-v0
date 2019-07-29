@@ -3,18 +3,33 @@
 #include "template.h"
 #include "int.h"
 
+const static struct updater overwriter = {
+  .name = "overwrite",
+  .func = &update,
+  .safe = false
+};
+
 const struct data_type data_type_int = {
   .name = "int",
   .getter = &get,
   .setter = &set,
-  .updater = &update
+  .updater_length = 1,
+  .updaters = &overwriter,
+  .clone = &clone
 };
+
+static void *clone(void *oldval) {
+  int *newval = malloc(sizeof(int));
+  __atomic_store(newval, (int*)oldval, __ATOMIC_SEQ_CST);
+  return newval;
+}
 
 // Return value: 2nd argument (rval)
 // Errors:
 static int get(void* val, struct return_val *rval) {
   rval->value = malloc(sizeof(char)*20);
-  snprintf(rval->value, 20, "%d", *((int*)val));
+  int ival = __atomic_load_n((int*)val, __ATOMIC_SEQ_CST);
+  snprintf(rval->value, 20, "%d", ival);
   return 0;
 }
 
