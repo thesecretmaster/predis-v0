@@ -117,15 +117,20 @@ int set(char* dt_name, struct main_struct* ms, struct element_queue **free_list,
 // Errors:
 // -1: Invalid data type
 // -2: Pending deletion
+// -3: Data types did not match
 int get(char* dt_name, struct main_struct* ms, struct return_val* rval, int idx) {
+  *safe = false;
+  struct main_ele *ele = ms->elements + idx;
+  if (strcmp(ele->type, dt_name) != 0) {
+    return -3;
+  }
   int dt_max = DATA_TYPE_COUNT;
   struct data_type* dt_list = data_types;
   struct data_type *dt = getDataType(dt_list, dt_max, dt_name);
   if (dt == NULL) {
+    *safe = true;
     return -1;
   } else {
-    *safe = false;
-    struct main_ele *ele = ms->elements + idx;
     if (ele->pending_delete == true) { return -2; }
     void *val = ele->ptr;
     int errors = dt->getter(val, rval);
