@@ -1,17 +1,25 @@
 #include "lib.c"
+#include <pthread.h>
+#include <math.h>
 
 struct sharedstruct {
   struct thread_info_list *tilist;
   struct thread_info_list *ti_ele;
-  struct element_queue **delq;
-  struct element_queue **free_list;
   struct main_struct *ms;
+  int tid;
   volatile short int weird_lock;
 };
 
-#define THREAD_COUNT 5
-#define TEST_COUNT 11
-#define TEST_RN_COUNT 200
+#define THREAD_COUNT 16
+#define TEST_COUNT 100
+#define TEST_RN_COUNT 2000
+// So... 2 appears to be the magic number at which we're unlikly
+// to hit a deadlock condition. If we set the size to be too low
+// then the main_struct will fill up before any of the threads
+// exit the first `set` phase, and they'll all be stuck trying
+// to append to an already full container.
+// You might do alright with 3 iff THREAD_COUNT <= 6
+#define MAIN_LEN (TEST_RN_COUNT-(pow(THREAD_COUNT, 2)-1))*THREAD_COUNT
 volatile bool start_threads = false;
 
 
@@ -23,13 +31,9 @@ int main() {
   // GLOBAL SETUP
   data_types[0] = data_type_int;
   struct thread_info_list *tilist = NULL;
-  struct element_queue *delq = NULL;
-  struct element_queue *free_list = NULL;
-  struct main_struct *ms = init();
+  struct main_struct *ms = init(MAIN_LEN);//init((THREAD_COUNT-5)*(TEST_COUNT)*TEST_RN_COUNT);
 
   struct sharedstruct sharedstruct = (struct sharedstruct){
-    .delq = &delq,
-    .free_list = &free_list,
     .ms = ms
   };
   pthread_t tid[THREAD_COUNT];
@@ -49,6 +53,7 @@ int main() {
     }
     sharedstruct.tilist = tilist;
     sharedstruct.ti_ele = ti_ele;
+    sharedstruct.tid = i;
     sharedstruct.weird_lock = 1;
     pthread_create(&tid[i], NULL, &dostuff, &sharedstruct);
     while (sharedstruct.weird_lock != 0) {}
@@ -66,7 +71,7 @@ int main() {
   struct thread_info_list *tiptr = tilist;
   while (1) {
     if (tiptr == NULL) {break;}
-    printf("Thread %d: %s\n", tcount, tiptr->safe ? "true" : "false");
+    // printf("Thread %d: %s\n", tcount, tiptr->safe ? "true" : "false");
     tcount++;
     tiptr = tiptr->next;
   }
@@ -75,23 +80,34 @@ int main() {
   return 0;
 }
 
+int **genRnSets(int set_count, int set_length) {
+  int **sets = malloc(sizeof(int*)*set_count);
+  for (int i = 0; i < set_count; i++) {
+    sets[i] = malloc(sizeof(int)*set_length);
+    for (int j = 0; j < set_length; j++) {
+      sets[i][j] = rand();
+    }
+  }
+  return sets;
+}
 
 void *dostuff(void *ptr) {
   struct sharedstruct *sharedstruct = ptr;
-  struct element_queue **delq = sharedstruct->delq;
-  struct element_queue **free_list = sharedstruct->free_list;
   struct main_struct *ms = sharedstruct->ms;
   struct thread_info_list *tilist = sharedstruct->tilist;
   struct thread_info_list *ti = sharedstruct->ti_ele;
+  int tid = sharedstruct->tid;
   safe = &(ti->safe);
   sharedstruct->weird_lock = 0;
 
-  int rns[TEST_RN_COUNT];
-  int idx[TEST_RN_COUNT];
+  int *idx = malloc(sizeof(int)*TEST_RN_COUNT);
   char str[20];
-  int errcount = 0;
+  int wrongcount = 0;
+  int seterrcount = 0;
+  int geterrcount = 0;
   int goodcount = 0;
   int geterrors;
+  int** rnsets = genRnSets(TEST_COUNT, TEST_RN_COUNT);
 
   while (start_threads == false) {}
   // int ti_ctr;
@@ -99,29 +115,35 @@ void *dostuff(void *ptr) {
   struct return_val* rval = malloc(sizeof(struct return_val));
   for (int i = 0; i < TEST_COUNT; i++) {
     for (int j = 0; j < TEST_RN_COUNT; j++) {
-      rns[j] = rand();
-      snprintf(str, 20, "%d", rns[j]);
-      idx[j] = set("int", ms, free_list, str);
+      snprintf(str, 20, "%d", rnsets[i][j]);
+      before_set:
+      idx[j] = set("int", ms, str);
       if (idx[j] < 0) {
-        printf("Set: %d\n", idx[j]);
+        seterrcount++;
+        // printf("%d: Errors: %d\n", tid, seterrcount);
+        sched_yield();
+        clean_queue(ms);
+        goto before_set;
+        // printf("Set: %d\n", idx[j]);
       }
     }
     for (int j = 0; j < TEST_RN_COUNT; j++) {
       if (idx[j] < 0) { continue; }
-      snprintf(str, 20, "%d", rns[j]);
+      snprintf(str, 20, "%d", rnsets[i][j]);
       geterrors = get("int", ms, rval, idx[j]);
-      del(ms, delq, idx[j]);
+      del(ms, idx[j]);
       if (geterrors != 0) {
-        printf("Get: %d\n", geterrors);
+        geterrcount++;
+        // printf("Get: %d\n", geterrors);
       }
       if (strcmp(rval->value, str) != 0) {
         printf("%s != %s\n", rval->value, str);
-        errcount++;
+        wrongcount++;
       } else {
         goodcount++;
       }
     }
-    clean_queue(delq, tilist, free_list);
+    clean_queue(ms);
     // ti_ctr = 0;
     // ti_ptr = tilist;
     // while (ti_ptr != NULL) {
@@ -131,7 +153,7 @@ void *dostuff(void *ptr) {
     // }
   }
 
-  printf("%d errors\n%d good\n", errcount, goodcount);
+  printf("%d: %d wrong\t%d good\t%d errors in set\t%d errors in get\n", tid, wrongcount, goodcount, seterrcount, geterrcount);
 
   // int a = set("int", ms, "123");
   // int b = set("int", ms, "543");
