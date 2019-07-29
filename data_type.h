@@ -8,6 +8,7 @@ struct return_val {
 struct data_type {
   char *name;
   int (*setter)(void**, char*);
+  int (*updater)(void**, char*);
   int (*getter)(void*, struct return_val*);
 };
 

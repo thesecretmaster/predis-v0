@@ -6,7 +6,8 @@
 const struct data_type data_type_int = {
   .name = "int",
   .getter = &get,
-  .setter = &set
+  .setter = &set,
+  .updater = &update
 };
 
 // Return value: 2nd argument (rval)
@@ -25,5 +26,12 @@ static int set(void** val, char *raw_set_val) {
   int set_val = strtol(raw_set_val, NULL, 10);
   (*val) = malloc(sizeof(int));
   *((int*)*val) = set_val;
+  return 0;
+}
+
+static int update(void** val, char *raw_update_val) {
+  int update_val = strtol(raw_update_val, NULL, 10);
+  (*val) = malloc(sizeof(int));
+  *((int*)*val) = update_val;
   return 0;
 }
