@@ -3,6 +3,7 @@
 #include "template.h"
 #include "int.h"
 
+static int update(void**, char*);
 const static struct updater overwriter = {
   .name = "overwrite",
   .func = &update,

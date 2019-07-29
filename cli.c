@@ -28,8 +28,12 @@ int main() {
       args[0] = strtok(NULL, " "); // type
       args[1] = strtok(NULL, " "); // index
       idx = strtol(args[1], NULL, 10);
-      get(args[0], ms, rval, idx);
-      printf("DONE: %s\n", rval->value);
+      errors = get(args[0], ms, rval, idx);
+      if (errors == 0) {
+        printf("DONE: %s\n", rval->value);
+      } else {
+        printf("ERROR: %d\n", errors);
+      }
     } else if (strcmp(cmd, "update") == 0) {
       args[0] = strtok(NULL, " "); // type
       args[1] = strtok(NULL, " "); // updater name

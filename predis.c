@@ -5,10 +5,11 @@
 #include "predis.h"
 
 #include "types/int.h"
+#include "types/string.h"
 
 volatile __thread bool *safe = NULL;
 
-#define DATA_TYPE_COUNT 1
+#define DATA_TYPE_COUNT 2
 static struct data_type data_types[DATA_TYPE_COUNT];
 
 static int initEle(struct main_ele *me) {
@@ -20,6 +21,7 @@ static int initEle(struct main_ele *me) {
 
 struct main_struct* init(int size) {
   data_types[0] = data_type_int;
+  data_types[1] = data_type_string;
   struct main_struct *ms = malloc(sizeof(struct main_struct));
   ms->size = size;
   ms->deletion_queue = NULL;
