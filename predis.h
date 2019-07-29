@@ -40,5 +40,6 @@ int get(char*, struct main_struct*, struct return_val*, int);
 int update(char*, struct main_struct*, char*, int);
 int del(struct main_struct*, int);
 int clean_queue(struct main_struct*);
+struct thread_info_list* register_thread(struct main_struct*);
 
 #endif // PREDIS_H

@@ -40,6 +40,17 @@ struct main_struct* init(int size) {
   return ms;
 }
 
+struct thread_info_list* register_thread(struct main_struct *ms) {
+  struct thread_info_list *ti_ele = malloc(sizeof(struct thread_info_list));
+  ti_ele->safe = true;
+  safe = &(ti_ele->safe);
+  ti_ele->next = ms->thread_list;
+  while (!__sync_bool_compare_and_swap(&(ms->thread_list), ti_ele->next, ti_ele)) {
+    ti_ele->next = ms->thread_list;
+  }
+  return ti_ele;
+}
+
 // Errors:
 // NULL: Not found
 static struct data_type* getDataType(struct data_type* dt_list, int dt_max, char* dt_name) {
@@ -56,6 +67,9 @@ static struct data_type* getDataType(struct data_type* dt_list, int dt_max, char
 // Errors:
 // -1: Invalid data type
 // -2: Out of space
+// Notes:
+//  - The pointed passed in for dt_name or raw_val CANNOT be freed
+//    until the element is deleted
 int set(char* dt_name, struct main_struct* ms, char* raw_val) {
   int dt_max = DATA_TYPE_COUNT;
   struct data_type* dt_list = data_types;

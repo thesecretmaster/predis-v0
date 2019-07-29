@@ -31,8 +31,6 @@ void *dostuff(void*);
 // Del will use shared memory to read each threads op counter, and will wait until each thread
 // has incrimented it's op counter.
 int main() {
-  // GLOBAL SETUP
-  struct thread_info_list *tilist = NULL;
   struct main_struct *ms = init(MAIN_LEN);//init((THREAD_COUNT-5)*(TEST_COUNT)*TEST_RN_COUNT);
 
   struct sharedstruct sharedstruct = (struct sharedstruct){
@@ -40,20 +38,9 @@ int main() {
   };
   pthread_t tid[THREAD_COUNT];
   struct thread_info_list *ti_ele;
-  struct thread_info_list *ti_ptr;
   for (int i = 0; i < THREAD_COUNT; i++) {
-    ti_ele = malloc(sizeof(struct thread_info_list));
-    ti_ele->safe = true;
-    ti_ele->next = NULL;
-
-    if (tilist == NULL) {
-      tilist = ti_ele;
-    } else {
-      ti_ptr = tilist;
-      while (ti_ptr->next != NULL) { ti_ptr = ti_ptr->next; }
-      ti_ptr->next = ti_ele;
-    }
-    sharedstruct.tilist = tilist;
+    ti_ele = register_thread(ms);
+    sharedstruct.tilist = ms->thread_list;
     sharedstruct.ti_ele = ti_ele;
     sharedstruct.tid = i;
     sharedstruct.weird_lock = 1;
@@ -70,7 +57,7 @@ int main() {
 
   printf("Cleanup!\n");
   int tcount = 0;
-  struct thread_info_list *tiptr = tilist;
+  struct thread_info_list *tiptr = ms->thread_list;
   while (1) {
     if (tiptr == NULL) {break;}
     // printf("Thread %d: %s\n", tcount, tiptr->safe ? "true" : "false");
