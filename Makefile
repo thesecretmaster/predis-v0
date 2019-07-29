@@ -4,7 +4,7 @@ LIBS = -lm
 
 all: main
 
-main: main.c
+main: main.c lib.c types/*
 	$(CC) $(CFLAGS) $(LIBS) -o main main.c types/int.c
 
 clean:
