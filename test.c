@@ -1,6 +1,9 @@
-#include "lib.c"
 #include <pthread.h>
 #include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "predis.h"
 
 struct sharedstruct {
   struct thread_info_list *tilist;
@@ -29,7 +32,6 @@ void *dostuff(void*);
 // has incrimented it's op counter.
 int main() {
   // GLOBAL SETUP
-  data_types[0] = data_type_int;
   struct thread_info_list *tilist = NULL;
   struct main_struct *ms = init(MAIN_LEN);//init((THREAD_COUNT-5)*(TEST_COUNT)*TEST_RN_COUNT);
 

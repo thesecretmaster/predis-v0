@@ -1,52 +1,25 @@
 #include <stdio.h>
-#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sched.h>
-#include "data_type.h"
+#include "predis.h"
 
 #include "types/int.h"
 
-#define DATA_TYPE_COUNT 1
-struct data_type data_types[DATA_TYPE_COUNT];
 volatile __thread bool *safe = NULL;
 
-struct main_ele {
-  char* type;
-  void* ptr;
-  bool pending_delete;
-};
+#define DATA_TYPE_COUNT 1
+static struct data_type data_types[DATA_TYPE_COUNT];
 
-struct thread_info_list {
-  struct thread_info_list *next;
-  volatile bool safe;
-};
-
-struct element_queue {
-  struct element_queue *next;
-  struct main_ele *element;
-  int idx;
-};
-
-struct main_struct {
-  int size;
-  int counter;
-  struct main_ele *elements;
-  struct element_queue *deletion_queue;
-  struct element_queue *free_list;
-  struct thread_info_list *thread_list;
-};
-
-int initEle(struct main_ele *me) {
+static int initEle(struct main_ele *me) {
   me->ptr = NULL;
   me->type = NULL;
   me->pending_delete = false;
   return 0;
 }
 
-int clean_queue(struct main_struct*);
-
 struct main_struct* init(int size) {
+  data_types[0] = data_type_int;
   struct main_struct *ms = malloc(sizeof(struct main_struct));
   ms->size = size;
   ms->deletion_queue = NULL;
@@ -69,7 +42,7 @@ struct main_struct* init(int size) {
 
 // Errors:
 // NULL: Not found
-struct data_type* getDataType(struct data_type* dt_list, int dt_max, char* dt_name) {
+static struct data_type* getDataType(struct data_type* dt_list, int dt_max, char* dt_name) {
   int i = 0;
   while (i < dt_max) {
     if (strcmp(dt_list[i].name, dt_name) == 0) {
