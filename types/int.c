@@ -11,7 +11,7 @@ const struct data_type data_type_int = {
 
 // Return value: 2nd argument (rval)
 // Errors:
-static int get(void* val, struct return_val *rval, int idx) {
+static int get(void* val, struct return_val *rval) {
   rval->value = malloc(sizeof(char)*20);
   snprintf(rval->value, 20, "%d", *((int*)val));
   return 0;

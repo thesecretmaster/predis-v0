@@ -128,7 +128,7 @@ int get(char* dt_name, struct main_struct* ms, struct return_val* rval, int idx)
     struct main_ele *ele = ms->elements + idx;
     if (ele->pending_delete == true) { return -2; }
     void *val = ele->ptr;
-    int errors = dt->getter(val, rval, idx);
+    int errors = dt->getter(val, rval);
     *safe = true;
     return errors;
   }
