@@ -2,13 +2,13 @@ CC = gcc
 CFLAGS = -Wall -g -pg -Ofast
 LIBS = -lm
 
-all: test cli
+all: bin/test bin/predis
 
-test: test.c predis.c types/*
+bin/test: test.c predis.c types/*.c types/*.h
 	$(CC) $(CFLAGS) $(LIBS) -pthread -o bin/test test.c predis.c types/*.c
 
-cli: cli.c predis.c types/*
-	$(CC) $(CFLAGS) $(LIBS) -lreadline -o bin/predis cli.c predis.c types/*.c
+bin/predis: cli.c predis.c types/*.c types/*.h
+	$(CC) $(CFLAGS) $(LIBS) -o bin/predis cli.c predis.c types/*.c -ledit
 
 clean:
 	rm -f bin/*

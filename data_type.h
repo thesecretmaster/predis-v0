@@ -11,6 +11,7 @@ struct data_type {
   char *name;
   int (*setter)(void**, char*);
   void* (*clone)(void*);
+  int (*free_ele)(void*);
   int updater_length;
   const struct updater *updaters;
   int (*getter)(void*, struct return_val*);

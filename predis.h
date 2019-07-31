@@ -8,7 +8,7 @@
 extern volatile __thread bool *safe;
 
 struct main_ele {
-  char* type;
+  struct data_type* type;
   void* ptr;
   bool pending_delete;
 };
@@ -33,13 +33,13 @@ struct main_struct {
   struct thread_info_list *thread_list;
 };
 
-int clean_queue(struct main_struct*);
 struct main_struct* init(int);
 int set(char*, struct main_struct*, char*);
 int get(char*, struct main_struct*, struct return_val*, int);
 int update(char*, char*, struct main_struct*, char*, int);
 int del(struct main_struct*, int);
 int clean_queue(struct main_struct*);
+int free_predis(struct main_struct*);
 struct thread_info_list* register_thread(struct main_struct*);
 
 #endif // PREDIS_H

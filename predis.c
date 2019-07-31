@@ -19,6 +19,33 @@ static int initEle(struct main_ele *me) {
   return 0;
 }
 
+int free_predis(struct main_struct *ms) {
+  clean_queue(ms);
+  for (int i = 0; i < ms->size; i++) {
+    struct main_ele *ele = ms->elements + i;
+    if (ele->type != NULL) {
+      ele->type->free_ele(ele->ptr);
+    }
+  }
+  struct thread_info_list *tiele = ms->thread_list;
+  struct thread_info_list *prev;
+  while (tiele != NULL) {
+    prev = tiele;
+    tiele = tiele->next;
+    free(prev);
+  }
+  struct element_queue *fl_ele = ms->free_list;
+  struct element_queue *prev_fl;
+  while (fl_ele != NULL) {
+    prev_fl = fl_ele;
+    fl_ele = fl_ele->next;
+    free(prev_fl);
+  }
+  free(ms->elements);
+  free(ms);
+  return 0;
+}
+
 struct main_struct* init(int size) {
   data_types[0] = data_type_int;
   data_types[1] = data_type_string;
@@ -85,22 +112,21 @@ int set(char* dt_name, struct main_struct* ms, char* raw_val) {
     int fail_count = 0;
     int idx;
     while (1) {
+      fl_head = *free_list;
+      if (fl_head != NULL) {
+        if (__sync_bool_compare_and_swap(free_list, fl_head, fl_head->next)) {
+          val = fl_head->element;
+          idx = fl_head->idx;
+          free(fl_head);
+          break;
+        }
+      }
       idx = __sync_fetch_and_add(&(ms->counter), 1);
       if (idx >= ms->size) {
         __sync_fetch_and_sub(&(ms->counter), 1);
       } else {
         val = ms->elements + idx;
         break;
-      }
-      fl_head = *free_list;
-      if (fl_head != NULL) {
-        if (__sync_bool_compare_and_swap(free_list, fl_head, fl_head->next)) {
-          // printf("Good cas!\n");
-          val = fl_head->element;
-          idx = fl_head->idx;
-          free(fl_head);
-          break;
-        }
       }
       if (fail_count > 10) {
         return -2;
@@ -110,7 +136,7 @@ int set(char* dt_name, struct main_struct* ms, char* raw_val) {
       fail_count++;
     }
     val->pending_delete = false;
-    val->type = dt_name;
+    val->type = dt;
     dt->setter(&(val->ptr), raw_val);
     return idx;
   }
@@ -133,7 +159,7 @@ int get(char* dt_name, struct main_struct* ms, struct return_val* rval, int idx)
     __atomic_store_n(safe, true, __ATOMIC_SEQ_CST);
     return -1;
   } else {
-    if (strcmp(ele->type, dt_name) != 0) {
+    if (strcmp(ele->type->name, dt_name) != 0) {
       return -3;
     }
     void *val = ele->ptr;
@@ -158,7 +184,7 @@ int update(char* dt_name, char* updater_name, struct main_struct* ms, char* raw_
     __atomic_store_n(safe, true, __ATOMIC_SEQ_CST);
     return -1;
   } else {
-    if (strcmp(ele->type, dt_name) != 0) { return -3; }
+    if (strcmp(ele->type->name, dt_name) != 0) { return -3; }
     if (ele->pending_delete == true) { return -2; }
     const struct updater *updater = NULL;
     for (int i = 0; i < dt->updater_length; i++) {
@@ -221,7 +247,22 @@ int clean_queue(struct main_struct *ms) {
     tilist = tilist->next;
   }
   struct element_queue *delq_tail = delq_head;
-  while (delq_tail->next != NULL) {delq_tail = delq_tail->next;}
+  struct main_ele *ele;
+  ele = delq_tail->element;
+  if (ele->type != NULL) {
+    ele->type->free_ele(ele->ptr);
+    ele->type = NULL;
+    ele->ptr = NULL;
+  }
+  while (delq_tail->next != NULL) {
+    delq_tail = delq_tail->next;
+    ele = delq_tail->element;
+    if (ele->type != NULL) {
+      ele->type->free_ele(ele->ptr);
+      ele->type = NULL;
+      ele->ptr = NULL;
+    }
+  }
   delq_tail->next = *free_list;
   while (!__sync_bool_compare_and_swap(free_list, delq_tail->next, delq_head)) {
     delq_tail->next = *free_list;

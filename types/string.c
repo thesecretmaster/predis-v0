@@ -16,10 +16,16 @@ const struct data_type data_type_string = {
   .name = "string",
   .getter = &get,
   .setter = &set,
+  .free_ele = &free_ele,
   .updater_length = 1,
   .updaters = &overwriter,
   .clone = &clone
 };
+
+static int free_ele(void *val) {
+  free(val);
+  return 0;
+}
 
 static int get(void *val, struct return_val *rval) {
   rval->value = (char*)val;
@@ -36,6 +42,6 @@ static void *clone(void *oldval) {
 }
 
 static int update(void **oldval, char *newval) {
-  *oldval = newval;
+  *oldval = strdup(newval);
   return 0;
 }

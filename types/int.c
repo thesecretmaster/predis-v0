@@ -13,25 +13,33 @@ const static struct updater overwriter = {
 const struct data_type data_type_int = {
   .name = "int",
   .getter = &get,
+  .free_ele = &free_ele,
   .setter = &set,
   .updater_length = 1,
   .updaters = &overwriter,
   .clone = &clone
 };
 
+static int free_ele(void *val) {
+  free(val);
+  return 0;
+}
+
 static void *clone(void *oldval) {
   int *newval = malloc(sizeof(int));
   __atomic_store(newval, (int*)oldval, __ATOMIC_SEQ_CST);
+  free(oldval);
   return newval;
 }
 
 // Return value: 2nd argument (rval)
 // Errors:
+// 1: rval->val need to be freed
 static int get(void* val, struct return_val *rval) {
   rval->value = malloc(sizeof(char)*20);
   int ival = __atomic_load_n((int*)val, __ATOMIC_SEQ_CST);
   snprintf(rval->value, 20, "%d", ival);
-  return 0;
+  return 1;
 }
 
 // Errors: See standard error codes in type.h

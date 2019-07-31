@@ -1,8 +1,17 @@
 #include <stdio.h>
-#include <readline/readline.h>
-#include <readline/history.h>
+#include <string.h>
 #include <stdlib.h>
 #include "predis.h"
+
+char *readline(char *prompt) {
+  printf("%s", prompt);
+  fflush(stdout);
+  char *buff = NULL;
+  size_t size = 0;
+  getline(&buff, &size, stdin);
+  buff[strlen(buff)-1] = '\0';
+  return buff;
+}
 
 int main() {
   char* line = NULL;
@@ -22,17 +31,20 @@ int main() {
     if (strcmp(cmd, "store") == 0) {
       args[0] = strtok(NULL, " "); // type
       args[1] = strtok(NULL, " "); // value
-      idx = set(strdup(args[0]), ms, args[1]);
+      idx = set(args[0], ms, args[1]);
       printf("DONE: %d\n", idx);
     } else if (strcmp(cmd, "get") == 0) {
       args[0] = strtok(NULL, " "); // type
       args[1] = strtok(NULL, " "); // index
       idx = strtol(args[1], NULL, 10);
       errors = get(args[0], ms, rval, idx);
-      if (errors == 0) {
-        printf("DONE: %s\n", rval->value);
-      } else {
+      if (errors < 0) {
         printf("ERROR: %d\n", errors);
+      } else {
+        printf("VALUE: %s\n", rval->value);
+        if (errors == 1) {
+          free(rval->value);
+        }
       }
     } else if (strcmp(cmd, "update") == 0) {
       args[0] = strtok(NULL, " "); // type
@@ -42,11 +54,22 @@ int main() {
       idx = strtol(args[2], NULL, 10);
       errors = update(args[0], args[1], ms, args[3], idx);
       printf("DONE: %d\n", errors);
+    } else if (strcmp(cmd, "delete") == 0) {
+      args[0] = strtok(NULL, " "); // idx
+      idx = strtol(args[0], NULL, 10);
+      errors = del(ms, idx);
+      printf("DONE: %d\n", errors);
+    } else if (strcmp(cmd, "clean") == 0) {
+      errors = clean_queue(ms);
+      printf("DONE: %d\n", errors);
     } else if (strcmp(cmd, "exit") == 0) {
       printf("Exiting...\n");
     } else {
       printf("Unrecognized command: %s\n", cmd);
     }
   }
+  free(rval);
+  free(line);
+  free_predis(ms);
   return 0;
 }

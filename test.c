@@ -13,7 +13,7 @@ struct sharedstruct {
   volatile short int weird_lock;
 };
 
-#define THREAD_COUNT 16
+#define THREAD_COUNT 4
 #define TEST_COUNT 100
 #define TEST_RN_COUNT 2000
 // So... 2 appears to be the magic number at which we're unlikly
@@ -23,7 +23,7 @@ struct sharedstruct {
 // to append to an already full container.
 // You might do alright with 3 iff THREAD_COUNT <= 6
 #define MAIN_LEN (TEST_RN_COUNT-(pow(THREAD_COUNT, 2)-1))*THREAD_COUNT
-volatile bool start_threads = false;
+static volatile bool start_threads = false;
 
 
 void *dostuff(void*);
@@ -65,7 +65,7 @@ int main() {
     tiptr = tiptr->next;
   }
   printf("Used %d threads\n", tcount);
-
+  free_predis(ms);
   return 0;
 }
 
@@ -121,7 +121,7 @@ void *dostuff(void *ptr) {
       snprintf(str, 20, "%d", rnsets[i][j]);
       geterrors = get("int", ms, rval, idx[j]);
       del(ms, idx[j]);
-      if (geterrors != 0) {
+      if (geterrors < 0) {
         geterrcount++;
         // printf("Get: %d\n", geterrors);
       }
@@ -130,6 +130,9 @@ void *dostuff(void *ptr) {
         wrongcount++;
       } else {
         goodcount++;
+      }
+      if (geterrors == 1) {
+        free(rval->value);
       }
     }
     clean_queue(ms);
@@ -141,6 +144,13 @@ void *dostuff(void *ptr) {
     //   ti_ptr = ti_ptr->next;
     // }
   }
+
+  for (int i = 0; i < TEST_COUNT; i++) {
+    free(rnsets[i]);
+  }
+  free(rnsets);
+  free(idx);
+  free(rval);
 
   printf("%d: %d wrong\t%d good\t%d errors in set\t%d errors in get\n", tid, wrongcount, goodcount, seterrcount, geterrcount);
 
