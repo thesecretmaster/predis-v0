@@ -3,42 +3,71 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <getopt.h>
+#include <sys/sysinfo.h>
 #include "predis.h"
 
 struct sharedstruct {
   struct thread_info_list *tilist;
   struct thread_info_list *ti_ele;
+  int test_count;
+  int test_rn_count;
+  int thread_count;
   struct main_struct *ms;
   int tid;
   volatile short int weird_lock;
 };
 
-#define THREAD_COUNT 4
-#define TEST_COUNT 100
-#define TEST_RN_COUNT 2000
-// So... 2 appears to be the magic number at which we're unlikly
-// to hit a deadlock condition. If we set the size to be too low
-// then the main_struct will fill up before any of the threads
-// exit the first `set` phase, and they'll all be stuck trying
-// to append to an already full container.
-// You might do alright with 3 iff THREAD_COUNT <= 6
-#define MAIN_LEN (TEST_RN_COUNT-(pow(THREAD_COUNT, 2)-1))*THREAD_COUNT
 static volatile bool start_threads = false;
 
+void* dostuff(void*);
 
-void *dostuff(void*);
-// Each thread has an op_counter which incriments every time an operation is completed
-// Del will use shared memory to read each threads op counter, and will wait until each thread
-// has incrimented it's op counter.
-int main() {
-  struct main_struct *ms = init(MAIN_LEN);//init((THREAD_COUNT-5)*(TEST_COUNT)*TEST_RN_COUNT);
+int main(int argc, char* argv[]) {
+  int thread_count = get_nprocs();
+  int test_count = 100;
+  int test_rn_count = 2000;
+
+  const struct option prog_opts[] = {
+    {"threads", optional_argument, NULL, 'a'},
+    {"tests", optional_argument, NULL, 'b'},
+    {"numbers", optional_argument, NULL, 'c'}
+  };
+  int c;
+  while (1) {
+    c = getopt_long(argc, argv, "", prog_opts, NULL);
+    if (c == -1) { break; }
+    switch (c) {
+      case 'a':
+        thread_count = strtol(optarg, NULL, 10);
+        break;
+      case 'b':
+        test_count = strtol(optarg, NULL, 10);
+        break;
+      case 'c':
+        test_rn_count = strtol(optarg, NULL, 10);
+        break;
+    }
+  }
+
+  // So... 2 appears to be the magic number at which we're unlikly
+  // to hit a deadlock condition. If we set the size to be too low
+  // then the main_struct will fill up before any of the threads
+  // exit the first `set` phase, and they'll all be stuck trying
+  // to append to an already full container.
+  // You might do alright with 3 iff THREAD_COUNT <= 6
+  int main_len = (test_rn_count-(pow(thread_count, 2)-1))*thread_count;
+
+  struct main_struct *ms = init(main_len);
 
   struct sharedstruct sharedstruct = (struct sharedstruct){
-    .ms = ms
+    .ms = ms,
+    .thread_count = thread_count,
+    .test_count = test_count,
+    .test_rn_count = test_rn_count
   };
-  pthread_t tid[THREAD_COUNT];
+  pthread_t tid[thread_count];
   struct thread_info_list *ti_ele;
-  for (int i = 0; i < THREAD_COUNT; i++) {
+  for (int i = 0; i < thread_count; i++) {
     ti_ele = register_thread(ms);
     sharedstruct.tilist = ms->thread_list;
     sharedstruct.ti_ele = ti_ele;
@@ -51,7 +80,7 @@ int main() {
   printf("Getting this party started\n");
   start_threads = true;
 
-  for (int i = 0; i < THREAD_COUNT; i++) {
+  for (int i = 0; i < thread_count; i++) {
     pthread_join(tid[i], NULL);
   }
 
@@ -89,21 +118,21 @@ void *dostuff(void *ptr) {
   safe = &(ti->safe);
   sharedstruct->weird_lock = 0;
 
-  int *idx = malloc(sizeof(int)*TEST_RN_COUNT);
+  int *idx = malloc(sizeof(int)*sharedstruct->test_rn_count);
   char str[20];
   int wrongcount = 0;
   int seterrcount = 0;
   int geterrcount = 0;
   int goodcount = 0;
   int geterrors;
-  int** rnsets = genRnSets(TEST_COUNT, TEST_RN_COUNT);
+  int** rnsets = genRnSets(sharedstruct->test_count, sharedstruct->test_rn_count);
 
   while (start_threads == false) {}
   // int ti_ctr;
   // struct thread_info_list *ti_ptr = NULL;
   struct return_val* rval = malloc(sizeof(struct return_val));
-  for (int i = 0; i < TEST_COUNT; i++) {
-    for (int j = 0; j < TEST_RN_COUNT; j++) {
+  for (int i = 0; i < sharedstruct->test_count; i++) {
+    for (int j = 0; j < sharedstruct->test_rn_count; j++) {
       snprintf(str, 20, "%d", rnsets[i][j]);
       before_set:
       idx[j] = set("int", ms, str);
@@ -116,7 +145,7 @@ void *dostuff(void *ptr) {
         // printf("Set: %d\n", idx[j]);
       }
     }
-    for (int j = 0; j < TEST_RN_COUNT; j++) {
+    for (int j = 0; j < sharedstruct->test_rn_count; j++) {
       if (idx[j] < 0) { continue; }
       snprintf(str, 20, "%d", rnsets[i][j]);
       geterrors = get("int", ms, rval, idx[j]);
@@ -145,7 +174,7 @@ void *dostuff(void *ptr) {
     // }
   }
 
-  for (int i = 0; i < TEST_COUNT; i++) {
+  for (int i = 0; i < sharedstruct->test_count; i++) {
     free(rnsets[i]);
   }
   free(rnsets);
