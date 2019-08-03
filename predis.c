@@ -146,12 +146,14 @@ int set(char* dt_name, struct main_struct* ms, char* raw_val) {
 // -1: Invalid data type
 // -2: Pending deletion
 // -3: Data types did not match
+// -4: Index out of bounds
+// -5: Element is not set
 int get(char* dt_name, struct main_struct* ms, struct return_val* rval, int idx) {
+  if (idx < 0 || idx > ms->size) { return -4; }
   __atomic_store_n(safe, false, __ATOMIC_SEQ_CST);
   struct main_ele *ele = ms->elements + idx;
-  if (ele->pending_delete) {
-    return -2;
-  }
+  if (ele->type == NULL)   { return -5; }
+  if (ele->pending_delete) { return -2; }
   int dt_max = DATA_TYPE_COUNT;
   struct data_type* dt_list = data_types;
   struct data_type *dt = getDataType(dt_list, dt_max, dt_name);
@@ -216,8 +218,10 @@ int update(char* dt_name, char* updater_name, struct main_struct* ms, char* raw_
 // -1: Already deleted
 int del(struct main_struct *ms, int idx) {
   struct main_ele *ele = ms->elements + idx;
-  if (ele->pending_delete) { return -1; }
-  ele->pending_delete = true;
+  bool b = false;
+  if (!__atomic_compare_exchange_n(&(ele->pending_delete), &b, true, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
+    return -1;
+  }
   struct element_queue **queue = &(ms->deletion_queue);
   struct element_queue *dq_ele = malloc(sizeof(struct element_queue));
   dq_ele->element = ele;
@@ -249,6 +253,7 @@ int clean_queue(struct main_struct *ms) {
   struct element_queue *delq_tail = delq_head;
   struct main_ele *ele;
   ele = delq_tail->element;
+  ele->pending_delete = false;
   if (ele->type != NULL) {
     ele->type->free_ele(ele->ptr);
     ele->type = NULL;
@@ -257,6 +262,7 @@ int clean_queue(struct main_struct *ms) {
   while (delq_tail->next != NULL) {
     delq_tail = delq_tail->next;
     ele = delq_tail->element;
+    ele->pending_delete = false;
     if (ele->type != NULL) {
       ele->type->free_ele(ele->ptr);
       ele->type = NULL;
