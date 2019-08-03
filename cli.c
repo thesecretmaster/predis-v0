@@ -13,6 +13,10 @@ char *readline(char *prompt) {
   return buff;
 }
 
+static void print_result(int res) {
+  printf("%s: %d\n", res < 0 ? "ERROR" : "DONE", res);
+}
+
 int main() {
   char* line = NULL;
   struct main_struct *ms = init(200);
@@ -32,7 +36,7 @@ int main() {
       args[0] = strtok(NULL, " "); // type
       args[1] = strtok(NULL, " "); // value
       idx = set(args[0], ms, args[1]);
-      printf("DONE: %d\n", idx);
+      print_result(idx);
     } else if (strcmp(cmd, "get") == 0) {
       args[0] = strtok(NULL, " "); // type
       args[1] = strtok(NULL, " "); // index
@@ -53,12 +57,12 @@ int main() {
       args[3] = strtok(NULL, " "); // newval
       idx = strtol(args[2], NULL, 10);
       errors = update(args[0], args[1], ms, args[3], idx);
-      printf("DONE: %d\n", errors);
+      print_result(errors);
     } else if (strcmp(cmd, "delete") == 0) {
       args[0] = strtok(NULL, " "); // idx
       idx = strtol(args[0], NULL, 10);
       errors = del(ms, idx);
-      printf("DONE: %d\n", errors);
+      print_result(errors);
     } else if (strcmp(cmd, "clean") == 0) {
       errors = clean_queue(ms);
       printf("DONE: %d\n", errors);
