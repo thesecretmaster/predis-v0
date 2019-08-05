@@ -57,6 +57,8 @@ int main(int argc, char* argv[]) {
   // You might do alright with 3 iff THREAD_COUNT <= 6
   int main_len = (test_rn_count-(pow(thread_count, 2)-1))*thread_count;
 
+  printf("Initializing predis instance of size %d\n", main_len);
+
   struct main_struct *ms = init(main_len);
 
   struct sharedstruct sharedstruct = (struct sharedstruct){
