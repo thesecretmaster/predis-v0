@@ -41,5 +41,6 @@ int del(struct main_struct*, int);
 int clean_queue(struct main_struct*);
 int free_predis(struct main_struct*);
 struct thread_info_list* register_thread(struct main_struct*);
+void deregister_thread(struct thread_info_list*);
 
 #endif // PREDIS_H

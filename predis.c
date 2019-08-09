@@ -80,6 +80,12 @@ struct thread_info_list* register_thread(struct main_struct *ms) {
   return ti_ele;
 }
 
+void deregister_thread(struct thread_info_list *ti) {
+  ti->safe = true;
+  // In theory we should be able to delete this. See https://cs.stackexchange.com/questions/112609/parallel-deletion-and-traversal-in-a-lock-free-linked-list
+  return;
+}
+
 // Errors:
 // NULL: Not found
 static struct data_type* getDataType(struct data_type* dt_list, int dt_max, char* dt_name) {
