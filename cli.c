@@ -4,6 +4,11 @@
 #include "predis.h"
 #include "command_parser.h"
 
+struct arg_list {
+  struct arg_list *next;
+  char *arg;
+};
+
 char *readline(char *prompt) {
   printf("%s", prompt);
   fflush(stdout);
@@ -20,6 +25,11 @@ int main() {
   struct main_struct *ms = init(200);
   struct thread_info_list *ti = register_thread(ms);
   struct return_val *rval = malloc(sizeof(struct return_val));
+  struct arg_list *arg_list_head;
+  struct arg_list *arg_list_ptr;
+  struct arg_list *arg_list_ptr_prev;
+  char **args;
+  int arg_list_len;
   while (line == NULL || strcmp(line, "exit") != 0) {
     free(line);
     line = readline("predis> ");
@@ -27,7 +37,30 @@ int main() {
       printf("Exiting\n");
       break;
     }
-    output = parse_command(ms, rval, line);
+    arg_list_head = malloc(sizeof(struct arg_list));
+    arg_list_head->arg = strtok(line, " ");
+    arg_list_ptr = malloc(sizeof(struct arg_list));
+    arg_list_head->next = arg_list_ptr;
+    arg_list_head->next->next = NULL;
+    arg_list_len = 1;
+    while ((arg_list_ptr->arg = strtok(NULL, " ")) != NULL) {
+      arg_list_ptr->next = malloc(sizeof(struct arg_list));
+      arg_list_ptr->next->next = NULL;
+      arg_list_ptr = arg_list_ptr->next;
+      arg_list_len++;
+    }
+    args = malloc(sizeof(char*)*arg_list_len);
+    arg_list_ptr = arg_list_head;
+    arg_list_len = 0;
+    while (arg_list_ptr != NULL) {
+      args[arg_list_len] = arg_list_ptr->arg;
+      arg_list_ptr_prev = arg_list_ptr;
+      arg_list_ptr = arg_list_ptr->next;
+      free(arg_list_ptr_prev);
+      arg_list_len++;
+    }
+    free(arg_list_ptr);
+    output = parse_command(ms, rval, args, arg_list_len);
     puts(output);
     free(output);
   }

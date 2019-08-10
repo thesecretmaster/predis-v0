@@ -9,8 +9,6 @@
 #include "command_parser.h"
 #include "predis.h"
 
-#define BUFSIZE 1024
-
 void *connhandler(void*);
 
 struct conn_info {
@@ -18,10 +16,9 @@ struct conn_info {
   int fd;
 };
 
-void parseCmd(int fd, struct main_struct *ms, char *cmd) {
-  printf("CMD: %s\n", cmd);
+void parseCmd(int fd, struct main_struct *ms, char **cmd, int cmdargs) {
   struct return_val* rval = malloc(sizeof(struct return_val));
-  char *output = parse_command(ms, rval, cmd);
+  char *output = parse_command(ms, rval, cmd, cmdargs);
   free(rval);
   char *prefix = "+";
   char *postfix = "\r\n";
@@ -33,8 +30,6 @@ void parseCmd(int fd, struct main_struct *ms, char *cmd) {
   send(fd, buf, strlen(buf), 0);
   free(buf);
 }
-
-static const char delimiter[] = "\r\n";
 
 int main() {
   struct addrinfo *addrinfo;
@@ -79,37 +74,113 @@ int main() {
   return 0;
 }
 
+#define MAX_ARRAY_LEN_DIGITS 5
+#define MAX_BULKSTR_LEN_DIGITS 9
+
+// This should prolly return a status int and take a **char for it's return val
+char *parseElement(int fd) {
+  char type;
+  char bulkstrlenbuf[MAX_BULKSTR_LEN_DIGITS + 3]; // 2 for the /r/n
+  int bulkstrcharlenguess;
+  long int bulkstrlen;
+  char *bulkstrlenbufend;
+  char *bulkstrbuf;
+
+  if (recv(fd, &type, 1, MSG_WAITALL) <= 0) { return NULL; }
+  switch (type) {
+    case '$':
+      // Peek ahead to find the total bulkstr length
+      bulkstrcharlenguess = 1;
+      memset(bulkstrlenbuf, '\0', MAX_BULKSTR_LEN_DIGITS + 3);
+      bulkstrlenbuf[MAX_BULKSTR_LEN_DIGITS] = '\0';
+      while (strstr(bulkstrlenbuf, "\r\n") == NULL) {
+        recv(fd, &bulkstrlenbuf, bulkstrcharlenguess, MSG_PEEK);
+        bulkstrcharlenguess++;
+        if (bulkstrcharlenguess > MAX_BULKSTR_LEN_DIGITS) {
+          printf("This is very bad. Should abort and require new connection\n");
+          return NULL;
+        }
+      }
+      bulkstrlen = strtol(bulkstrlenbuf, &bulkstrlenbufend, 10);
+      // Eat everything up to the start of the actual bulkstring
+      recv(fd, &bulkstrlenbuf, (bulkstrlenbufend - bulkstrlenbuf) + 2, MSG_WAITALL);
+      bulkstrbuf = malloc(sizeof(char)*bulkstrlen + 1);
+      bulkstrbuf[bulkstrlen] = '\0';
+      recv(fd, bulkstrbuf, bulkstrlen, MSG_WAITALL);
+      // Eat the trailing \r\n
+      recv(fd, &bulkstrlenbuf, 2, MSG_WAITALL);
+      return bulkstrbuf;
+    default:
+      return NULL;
+  }
+}
+
 void *connhandler(void *ptr) {
   struct conn_info *obj = ptr;
   int fd = obj->fd;
   struct main_struct *ms = obj->ms;
   struct thread_info_list *ti = register_thread(ms);
 
-  char sockbuf[BUFSIZE];
-  int sptr, eptr;
-  char *cmdend;
-  int recvret;
+  char type;
+  char arraylenbuf[MAX_ARRAY_LEN_DIGITS + 3];
+  char *arraylenbufend;
+  arraylenbuf[MAX_ARRAY_LEN_DIGITS + 2] = '\0';
+  long int arraylen;
+  char **arrayelems;
+  int i;
 
-  sptr = 0;
-  eptr = 0;
-  while ((recvret = recv(fd, sockbuf + eptr, (BUFSIZE - eptr)-1, 0)) > 0) {
-    // printf("\nRecieved %d chars to buffer index %d\n", recvret, eptr);
-    // printf("Cheaty cheaty here it is\n%s==========\n", sockbuf + sptr);
-    sockbuf[eptr + recvret] = '\0';
-    eptr = eptr + recvret;
-    // printf("Setting end pointer to %d\n", eptr);
-    while ((cmdend = strstr(sockbuf + sptr, delimiter)) != NULL) {
-      // printf("Parsing a command starting at index %d\n", sptr);
-      *(cmdend) = '\0';
-      parseCmd(fd, ms, sockbuf + sptr);
-      // printf("Incrimenting sptr by %ld\n", (cmdend - (sockbuf + sptr)) + sizeof(delimiter));
-      sptr = sptr + (cmdend - (sockbuf + sptr)) + 1;
+  while (recv(fd, &type, 1, MSG_WAITALL) > 0) {
+    switch (type) {
+      case '*':
+        // Peek ahead to find the total array length
+        recv(fd, &arraylenbuf, MAX_ARRAY_LEN_DIGITS, MSG_WAITALL | MSG_PEEK);
+        arraylen = strtol(arraylenbuf, &arraylenbufend, 10);
+        // Eat everything up to the start of the actual array
+        recv(fd, &arraylenbuf, (arraylenbufend - arraylenbuf) + 2, MSG_WAITALL);
+        arrayelems = malloc(sizeof(char*)*arraylen);
+        for (i = 0; i < arraylen; i++) {
+          arrayelems[i] = parseElement(fd);
+          if (arrayelems[i] == NULL) {
+            printf("Yikes! Invalid\n");
+          }
+        }
+        parseCmd(fd, ms, arrayelems, arraylen);
+        break;
+      default:
+        printf("Invalid type %c\n", type);
     }
-    // printf("Finished parsing commands. Copying %d chars starting at %d to index %d\n", eptr -sptr, sptr, 0);
-    memcpy(sockbuf, sockbuf + sptr, eptr - sptr);
-    eptr = eptr - sptr;
-    sptr = 0;
   }
+
+  // char sockbuf[BUFSIZE];
+  // int sptr, eptr;
+  // char *cmdend;
+  // int recvret;
+  //
+  // sptr = 0;
+  // eptr = 0;
+  // while ((recvret = recv(fd, sockbuf + eptr, (BUFSIZE - eptr)-1, 0)) > 0) {
+  //   // printf("\nRecieved %d chars to buffer index %d\n", recvret, eptr);
+  //   // printf("Cheaty cheaty here it is\n%s==========\n", sockbuf + sptr);
+  //   sockbuf[eptr + recvret] = '\0';
+  //   eptr = eptr + recvret;
+  //   // printf("Setting end pointer to %d\n", eptr);
+  //
+  //   // Well... so it turns out that redis commands aren't _exactly_ \r\n terminated.
+  //   // Really, parseCmd should be parsing an array of bulk strings:
+  //   //   *<number of args>\r\n$<charlen_arg1>\r\n<arg1>\r\n$<charlen_arg2>\r\narg2\r\n...
+  //
+  //   while ((cmdend = strstr(sockbuf + sptr, delimiter)) != NULL) {
+  //     // printf("Parsing a command starting at index %d\n", sptr);
+  //     *(cmdend) = '\0';
+  //     parseCmd(fd, ms, sockbuf + sptr);
+  //     // printf("Incrimenting sptr by %ld\n", (cmdend - (sockbuf + sptr)) + sizeof(delimiter));
+  //     sptr = sptr + (cmdend - (sockbuf + sptr)) + 1;
+  //   }
+  //   // printf("Finished parsing commands. Copying %d chars starting at %d to index %d\n", eptr -sptr, sptr, 0);
+  //   memcpy(sockbuf, sockbuf + sptr, eptr - sptr);
+  //   eptr = eptr - sptr;
+  //   sptr = 0;
+  // }
   shutdown(fd, 2);
   printf("Closed %d!\n", fd);
   close(fd);
