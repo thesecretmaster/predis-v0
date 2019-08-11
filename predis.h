@@ -2,6 +2,7 @@
 #define PREDIS_H
 
 #include "data_type.h"
+#include "lib/hashtable.h"
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -31,6 +32,7 @@ struct main_struct {
   struct element_queue *deletion_queue;
   struct element_queue *free_list;
   struct thread_info_list *thread_list;
+  struct ht_table *hashtable;
   int thread_list_traversing_count;
   bool thread_list_write_locked;
 };

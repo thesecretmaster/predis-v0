@@ -3,6 +3,7 @@
 #include <string.h>
 #include <sched.h>
 #include "predis.h"
+#undef HASHTABLE_SAFE
 #include "lib/hashtable.h"
 
 #include "types/int.h"
@@ -52,6 +53,7 @@ struct main_struct* init(int size) {
   data_types[1] = data_type_string;
   struct main_struct *ms = malloc(sizeof(struct main_struct));
   ms->size = size;
+  ms->hashtable = ht_init(size);
   ms->deletion_queue = NULL;
   ms->free_list = NULL;
   ms->thread_list = NULL;
@@ -133,14 +135,13 @@ int set(char* dt_name, struct main_struct* ms, char* raw_val) {
     return -1;
   } else {
     struct main_ele *val = NULL;
-    struct element_queue **free_list = &(ms->free_list);
     struct element_queue *fl_head;
     int fail_count = 0;
     int idx;
     while (1) {
-      fl_head = *free_list;
+      fl_head = ms->free_list;
       if (fl_head != NULL) {
-        if (__sync_bool_compare_and_swap(free_list, fl_head, fl_head->next)) {
+        if (__atomic_compare_exchange_n(&(ms->free_list), &(fl_head), fl_head->next, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
           val = fl_head->element;
           idx = fl_head->idx;
           free(fl_head);
@@ -272,14 +273,27 @@ int clean_queue(struct main_struct *ms) {
   if (delq_head == NULL) {
     return -1;
   }
+  struct ht_free_list *ht_preped = ht_clean_prepare(ms->hashtable);
   // Before we use tilist, we need to wait for any writers to be done and increment the semaphor
-  __atomic_add_fetch(&(ms->thread_list_traversing_count), 1, __ATOMIC_SEQ_CST);
-  while (__atomic_load_n(&(ms->thread_list_write_locked), __ATOMIC_SEQ_CST) == true) {}
+  // This is like a wacky custom version of auto-retry transactions
+  while (1) {
+    while (__atomic_load_n(&(ms->thread_list_write_locked), __ATOMIC_SEQ_CST) == true) {}
+    // There's a small risk that right here, somebody else grabbed the write lock
+    // So first, we pretend that it didn't happen:
+    __atomic_add_fetch(&(ms->thread_list_traversing_count), 1, __ATOMIC_SEQ_CST);
+    // But then if it did happen, we revert our changes and try again (otherwise we just proceed)
+    if (__atomic_load_n(&(ms->thread_list_write_locked), __ATOMIC_SEQ_CST) == false) {
+      break;
+    } else {
+      __atomic_sub_fetch(&(ms->thread_list_traversing_count), 1, __ATOMIC_SEQ_CST);
+    }
+  }
   while (tilist != NULL) {
     while (!(tilist->safe)) {}
     tilist = tilist->next;
   }
   __atomic_sub_fetch(&(ms->thread_list_traversing_count), 1, __ATOMIC_SEQ_CST);
+  ht_clean_run(ht_preped);
   struct element_queue *delq_tail = delq_head;
   struct main_ele *ele;
   ele = delq_tail->element;

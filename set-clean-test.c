@@ -183,7 +183,7 @@ void *dostuff(void *ptr) {
   free(idx);
   free(rval);
 
-  printf("%d: %d wrong\t%d good\t%d errors in set\t%d errors in get\n", tid, wrongcount, goodcount, seterrcount, geterrcount);
+  printf("%*d: %d wrong\t%d good\t%d errors in set\t%d errors in get\n", tid < 10 ? 2 : 1, tid, wrongcount, goodcount, seterrcount, geterrcount);
 
   // int a = set("int", ms, "123");
   // int b = set("int", ms, "543");
