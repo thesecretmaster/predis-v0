@@ -124,9 +124,6 @@ static struct data_type* getDataType(struct data_type* dt_list, int dt_max, char
 // Errors:
 // -1: Invalid data type
 // -2: Out of space
-// Notes:
-//  - The pointed passed in for dt_name or raw_val CANNOT be freed
-//    until the element is deleted
 int set(char* dt_name, struct main_struct* ms, char* raw_val) {
   int dt_max = DATA_TYPE_COUNT;
   struct data_type* dt_list = data_types;
