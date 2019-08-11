@@ -25,11 +25,13 @@ int main() {
   struct main_struct *ms = init(200);
   struct thread_info_list *ti = register_thread(ms);
   struct return_val *rval = malloc(sizeof(struct return_val));
+  rval->value = NULL;
   struct arg_list *arg_list_head;
   struct arg_list *arg_list_ptr;
   struct arg_list *arg_list_ptr_prev;
   char **args;
   int arg_list_len;
+  int i;
   while (line == NULL || strcmp(line, "exit") != 0) {
     free(line);
     line = readline("predis> ");
@@ -49,15 +51,15 @@ int main() {
       arg_list_ptr = arg_list_ptr->next;
       arg_list_len++;
     }
-    args = malloc(sizeof(char*)*arg_list_len);
+    args = malloc(sizeof(char*)*(arg_list_len + 1));
     arg_list_ptr = arg_list_head;
-    arg_list_len = 0;
+    i = 0;
     while (arg_list_ptr != NULL) {
-      args[arg_list_len] = arg_list_ptr->arg;
+      args[i] = arg_list_ptr->arg;
       arg_list_ptr_prev = arg_list_ptr;
       arg_list_ptr = arg_list_ptr->next;
       free(arg_list_ptr_prev);
-      arg_list_len++;
+      i++;
     }
     free(arg_list_ptr);
     output = parse_command(ms, rval, args, arg_list_len);

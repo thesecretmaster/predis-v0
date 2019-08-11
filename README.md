@@ -8,17 +8,21 @@ In it's current state, there are two executables which predis produces for end u
 
 Predis commands currently are not as similar to redis commands as would be ideal, due to the lack of a hashtable implimentation in the project. This means that instead of using string keys to access the data, data must be accessed with indicies.
 
-Each of these commands can return status codes, which will be described in comments above the method name in `predis.c`.
+Each of these commands can return status codes (negative ints), which will be described in comments above the method name in `predis.c`.
 
-### `store`
+### `iset`
 
-The store command takes two arguments. The type of data to be stored, followed by the value of that data. So, to store the integer 4321, you'd use `store int 4321`.
+The `iset` command takes two arguments. The type of data to be stored, followed by the value of that data. So, to store the integer 4321, you'd use `iset int 4321`.
 
 The store command will return an integer, which is the key by which the stored data can be accessed. This index is the index referenced by the `get`, `del`, and `update` commands.
 
-### `get`
+### `iget`
 
-As the name implies, the get command gets the data stored at an index. It takes two arguments, the type, and the index. So, building on the example for `set` (assuming set returned `86`), `get int 86` would return `4321`.
+As the name implies, the `iget` command gets the data stored at an index. It takes two arguments, the type, and the index. So, building on the example for `iset` (assuming `iset` returned `86`), `iget int 86` would return `4321`.
+
+### `set` / `get`
+
+`set` and `get` provide a wrappers around `iset` and `iget`, allowing you to use string keys instead of integers. So, instead of `iset string foobar`, you could use `set somekey foobar`, then `get somekey` to return `foobar` again. These only work for the string type.
 
 ### `delete`
 
