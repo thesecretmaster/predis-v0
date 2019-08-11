@@ -1,6 +1,8 @@
 #ifndef LIB_HASHTABLE_H
 #define LIB_HASHTABLE_H
 
+#include <stdbool.h>
+
 struct ht_elem {
   char *key;
   int value;
@@ -17,6 +19,8 @@ struct ht_table {
   struct ht_free_list *free_list;
   struct ht_elem **elements;
   int size;
+  bool write_locked;
+  int reader_count;
 };
 
 struct ht_table *ht_init(int);
