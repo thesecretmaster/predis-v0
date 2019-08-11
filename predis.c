@@ -3,6 +3,7 @@
 #include <string.h>
 #include <sched.h>
 #include "predis.h"
+#include "lib/hashtable.h"
 
 #include "types/int.h"
 #include "types/string.h"
