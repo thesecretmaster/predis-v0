@@ -57,6 +57,8 @@ struct main_struct* init(int size) {
   ms->thread_list = NULL;
   ms->counter = 0;
   ms->elements = malloc((ms->size)*sizeof(struct main_ele));
+  ms->thread_list_write_locked = false;
+  ms->thread_list_traversing_count = 0;
   struct main_ele *me_ptr = ms->elements;
   int rval;
   void* ub = ms->elements + ms->size;
@@ -73,7 +75,7 @@ struct main_struct* init(int size) {
 struct thread_info_list* register_thread(struct main_struct *ms) {
   struct thread_info_list *ti_ele = malloc(sizeof(struct thread_info_list));
   ti_ele->safe = true;
-  safe = &(ti_ele->safe);
+  safe = &(ti_ele->safe); // Set the global variable
   ti_ele->next = ms->thread_list;
   while (!__sync_bool_compare_and_swap(&(ms->thread_list), ti_ele->next, ti_ele)) {
     ti_ele->next = ms->thread_list;
@@ -81,9 +83,26 @@ struct thread_info_list* register_thread(struct main_struct *ms) {
   return ti_ele;
 }
 
-void deregister_thread(struct thread_info_list *ti) {
-  ti->safe = true;
-  // In theory we should be able to delete this. See https://cs.stackexchange.com/questions/112609/parallel-deletion-and-traversal-in-a-lock-free-linked-list
+// In theory this could be simpler. See https://cs.stackexchange.com/questions/112609/parallel-deletion-and-traversal-in-a-lock-free-linked-list
+void deregister_thread(struct main_struct *ms, struct thread_info_list *ti) {
+  int falsevar = false;
+  // Grab the write lock
+  while (!__atomic_compare_exchange_n(&(ms->thread_list_write_locked), &falsevar, true, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {}
+  // Wait until all the traversers leave
+  while (__atomic_load_n(&(ms->thread_list_traversing_count), __ATOMIC_SEQ_CST) != 0) {}
+  // Now we have total control! Mwa ha ha ha ha!
+
+  // Get a pointer to the previous element (tiptr)
+  struct thread_info_list *tiptr = ms->thread_list;
+  while (tiptr->next != ti) { tiptr = tiptr->next; }
+  // Delete ti
+  tiptr->next = ti->next;
+
+  // Release the lock
+  __atomic_store_n(&(ms->thread_list_write_locked), false, __ATOMIC_SEQ_CST);
+
+  // Clean up
+  free(ti);
   return;
 }
 
@@ -253,10 +272,14 @@ int clean_queue(struct main_struct *ms) {
   if (delq_head == NULL) {
     return -1;
   }
+  // Before we use tilist, we need to wait for any writers to be done and increment the semaphor
+  __atomic_add_fetch(&(ms->thread_list_traversing_count), 1, __ATOMIC_SEQ_CST);
+  while (__atomic_load_n(&(ms->thread_list_write_locked), __ATOMIC_SEQ_CST) == true) {}
   while (tilist != NULL) {
     while (!(tilist->safe)) {}
     tilist = tilist->next;
   }
+  __atomic_sub_fetch(&(ms->thread_list_traversing_count), 1, __ATOMIC_SEQ_CST);
   struct element_queue *delq_tail = delq_head;
   struct main_ele *ele;
   ele = delq_tail->element;

@@ -31,6 +31,8 @@ struct main_struct {
   struct element_queue *deletion_queue;
   struct element_queue *free_list;
   struct thread_info_list *thread_list;
+  int thread_list_traversing_count;
+  bool thread_list_write_locked;
 };
 
 struct main_struct* init(int);
@@ -41,6 +43,6 @@ int del(struct main_struct*, int);
 int clean_queue(struct main_struct*);
 int free_predis(struct main_struct*);
 struct thread_info_list* register_thread(struct main_struct*);
-void deregister_thread(struct thread_info_list*);
+void deregister_thread(struct main_struct*, struct thread_info_list*);
 
 #endif // PREDIS_H

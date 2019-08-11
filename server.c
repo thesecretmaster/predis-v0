@@ -185,6 +185,6 @@ void *connhandler(void *ptr) {
   printf("Closed %d!\n", fd);
   close(fd);
   free(ptr);
-  deregister_thread(ti);
+  deregister_thread(ms, ti);
   return NULL;
 }
