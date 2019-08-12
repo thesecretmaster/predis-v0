@@ -96,9 +96,13 @@ void deregister_thread(struct main_struct *ms, struct thread_info_list *ti) {
 
   // Get a pointer to the previous element (tiptr)
   struct thread_info_list *tiptr = ms->thread_list;
-  while (tiptr->next != ti) { tiptr = tiptr->next; }
-  // Delete ti
-  tiptr->next = ti->next;
+  if (ti  == tiptr) {
+    ms->thread_list = ti->next;
+  } else {
+    while (tiptr->next != ti) { tiptr = tiptr->next; }
+    // Delete ti
+    tiptr->next = ti->next;
+  }
 
   // Release the lock
   __atomic_store_n(&(ms->thread_list_write_locked), false, __ATOMIC_SEQ_CST);

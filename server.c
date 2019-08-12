@@ -62,7 +62,7 @@ int main() {
   struct sockaddr_storage their_addr;
   socklen_t addr_size = sizeof(their_addr);
   pthread_t pid;
-  struct main_struct *ms = init(200);
+  struct main_struct *ms = init(20000);
   while (1) {
     client_sock = accept(socket_fd, (struct sockaddr *)&their_addr, &addr_size);
     printf("Accepted a conn %d!\n", client_sock);

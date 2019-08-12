@@ -1,3 +1,6 @@
 vgcore.*
 gmon.out
 bin/*
+testfile
+testfile.expout
+testfile.out

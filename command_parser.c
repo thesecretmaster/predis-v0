@@ -64,12 +64,19 @@ char *parse_command(struct main_struct *ms, struct return_val *rval, char **args
       sprintf(ret_buf, "HT_ERROR: %d", errors);
       del(ms, idx);
     } else {
-      ret_buf = print_result(idx, NULL, false);
+      ret_buf = malloc(sizeof("OK"));
+      ret_buf = "OK";
+      // ret_buf = print_result(idx, NULL, false);
     }
   } else if (strcmp(cmd, "get") == 0) {
     idx = ht_find(ms->hashtable, args[1]);
     errors = get("string", ms, rval, idx);
-    ret_buf = print_result(errors, rval, false);
+    if (errors >= 0) {
+      ret_buf = malloc(sizeof(char)*strlen(rval->value) + 1);
+      strcpy(ret_buf, rval->value);
+    } else {
+      ret_buf = print_result(errors, rval, false);
+    }
     if (errors == 1) {
       free(rval->value);
     }
