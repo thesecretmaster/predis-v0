@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <netdb.h>
 #include <pthread.h>
+#include <signal.h>
 #include "command_parser.h"
 #include "predis.h"
 
@@ -29,6 +30,10 @@ void parseCmd(int fd, struct main_struct *ms, char **cmd, int cmdargs) {
   buf[strlen(prefix) + strlen(postfix) + strlen(output)] = '\0';
   send(fd, buf, strlen(buf), 0);
   free(buf);
+}
+
+void intHandler(int foo) {
+  exit(222);
 }
 
 int main() {
@@ -63,6 +68,7 @@ int main() {
   socklen_t addr_size = sizeof(their_addr);
   pthread_t pid;
   struct main_struct *ms = init(20000);
+  signal(SIGINT, intHandler);
   while (1) {
     client_sock = accept(socket_fd, (struct sockaddr *)&their_addr, &addr_size);
     printf("Accepted a conn %d!\n", client_sock);

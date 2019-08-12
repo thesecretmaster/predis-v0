@@ -19,8 +19,14 @@ struct ht_table *ht_init(int size) {
   return table;
 }
 
-int ht_hash(char *key) {
-  return key[0];
+// https://stackoverflow.com/a/7666577/4948732
+int ht_hash(char *str) {
+  int hash = 5381;
+  int c;
+  while ((c = *str++)) {
+    hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+  }
+  return hash;
 }
 
 #ifdef HASHTABLE_SAFE
