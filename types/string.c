@@ -28,7 +28,7 @@ static int free_ele(void *val) {
 }
 
 static int get(void *val, struct return_val *rval) {
-  rval->value = strdup((char*)val);
+  rval->value = (char*)val;
   return 0;
 }
 

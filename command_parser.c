@@ -64,8 +64,7 @@ char *parse_command(struct main_struct *ms, struct return_val *rval, char **args
       sprintf(ret_buf, "HT_ERROR: %d", errors);
       del(ms, idx);
     } else {
-      ret_buf = malloc(sizeof("OK"));
-      ret_buf = "OK";
+      ret_buf = strdup("OK");
       // ret_buf = print_result(idx, NULL, false);
     }
   } else if (strcmp(cmd, "get") == 0) {

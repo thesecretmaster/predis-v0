@@ -12,6 +12,8 @@
 
 void *connhandler(void*);
 
+static struct main_struct *global_ms;
+
 struct conn_info {
   struct main_struct *ms;
   int fd;
@@ -30,9 +32,11 @@ void parseCmd(int fd, struct main_struct *ms, char **cmd, int cmdargs) {
   buf[strlen(prefix) + strlen(postfix) + strlen(output)] = '\0';
   send(fd, buf, strlen(buf), 0);
   free(buf);
+  free(output);
 }
 
 void intHandler(int foo) {
+  free_predis(global_ms);
   exit(222);
 }
 
@@ -68,6 +72,7 @@ int main() {
   socklen_t addr_size = sizeof(their_addr);
   pthread_t pid;
   struct main_struct *ms = init(20000);
+  global_ms = ms;
   signal(SIGINT, intHandler);
   while (1) {
     client_sock = accept(socket_fd, (struct sockaddr *)&their_addr, &addr_size);
@@ -151,6 +156,10 @@ void *connhandler(void *ptr) {
           }
         }
         parseCmd(fd, ms, arrayelems, arraylen);
+        for (i = 0; i < arraylen; i++) {
+          free(arrayelems[i]);
+        }
+        free(arrayelems);
         break;
       default:
         printf("Invalid type %c\n", type);

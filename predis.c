@@ -23,6 +23,7 @@ static int initEle(struct main_ele *me) {
 
 int free_predis(struct main_struct *ms) {
   clean_queue(ms);
+  ht_free(ms->hashtable);
   for (int i = 0; i < ms->size; i++) {
     struct main_ele *ele = ms->elements + i;
     if (ele->type != NULL) {

@@ -7,10 +7,6 @@ struct ht_table *ht_init(int size) {
   struct ht_table *table = malloc(sizeof(struct ht_table));
   table->elements = malloc(sizeof(struct ht_elem)*size);
   table->free_list = NULL;
-  #ifdef HASHTABLE_SAFE
-  table->write_locked = false;
-  table->reader_count = 0;
-  #endif
   // Could this loop be made faster by setting the first element and memcpy-ing?
   for (int i = 0; i < size; i++) {
     table->elements[i] = NULL;
@@ -19,8 +15,33 @@ struct ht_table *ht_init(int size) {
   return table;
 }
 
+void ht_free(struct ht_table *table) {
+  struct ht_elem *elem;
+  struct ht_elem *prev;
+  for (int i = 0; i < table->size; i++) {
+    elem = table->elements[i];
+    while (elem != NULL) {
+      prev = elem;
+      elem = elem->next;
+      free(prev->key);
+      free(prev);
+    }
+  }
+  struct ht_free_list *fl_elem;
+  struct ht_free_list *fl_prev;
+  fl_elem = table->free_list;
+  while (fl_elem != NULL) {
+    fl_prev = fl_elem;
+    fl_elem = fl_elem->next;
+    free(fl_prev->elem);
+    free(fl_prev);
+  }
+  free(table->elements);
+  free(table);
+}
+
 // https://stackoverflow.com/a/7666577/4948732
-int ht_hash(char *str) {
+unsigned int ht_hash(char *str) {
   int hash = 5381;
   int c;
   while ((c = *str++)) {
@@ -29,23 +50,6 @@ int ht_hash(char *str) {
   return hash;
 }
 
-#ifdef HASHTABLE_SAFE
-int ht_clean(struct ht_table *table) {
-  bool falsevar = false;
-  while (!__atomic_compare_exchange_n(&(table->write_locked), &falsevar, true, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {}
-  while (__atomic_load_n(&(table->reader_count), __ATOMIC_SEQ_CST) != 0) {}
-  struct ht_free_list *fl_head = table->free_list;
-  struct ht_free_list *prev;
-  while (fl_head != NULL) {
-    prev = fl_head;
-    fl_head = fl_head->next;
-    free(prev->elem);
-    free(prev);
-  }
-  __atomic_store_n(&(table->write_locked), false, __ATOMIC_SEQ_CST);
-  return 0;
-}
-#else
 struct ht_free_list *ht_clean_prepare(struct ht_table *table) {
   struct ht_free_list *fl_head;
   void *nullptr = NULL;
@@ -57,6 +61,7 @@ int ht_clean_run(struct ht_free_list *fl_head) {
   if (fl_head == NULL) { return -1; }
   struct ht_free_list *prev;
   while (fl_head != NULL) {
+    free(fl_head->elem->key);
     free(fl_head->elem);
     prev = fl_head;
     fl_head = fl_head->next;
@@ -64,30 +69,19 @@ int ht_clean_run(struct ht_free_list *fl_head) {
   }
   return 0;
 }
-#endif
 
 // Errors:
 // -1: Not found
 int ht_find(struct ht_table *table, char *key) {
-  #ifdef HASHTABLE_SAFE
-  __atomic_add_fetch(&(table->reader_count), 1, __ATOMIC_SEQ_CST);
-  while (__atomic_load_n(&(table->write_locked), __ATOMIC_SEQ_CST) == true) {}
-  #endif
   struct ht_elem *elem = table->elements[ht_hash(key) % table->size];
   int val;
   while (elem != NULL) {
     if (elem->skip_status == 0 && strcmp(elem->key, key) == 0) {
       val = elem->value;
-      #ifdef HASHTABLE_SAFE
-      __atomic_sub_fetch(&(table->reader_count), 1, __ATOMIC_SEQ_CST);
-      #endif
       return val;
     }
     elem = elem->next;
   }
-  #ifdef HASHTABLE_SAFE
-  __atomic_sub_fetch(&(table->reader_count), 1, __ATOMIC_SEQ_CST);
-  #endif
   return -1;
 }
 
@@ -95,10 +89,6 @@ int ht_find(struct ht_table *table, char *key) {
 // -1: Already existed
 // -2: CAS failed, try again
 int ht_store(struct ht_table *table, char *key, int val) {
-  #ifdef HASHTABLE_SAFE
-  __atomic_add_fetch(&(table->reader_count), 1, __ATOMIC_SEQ_CST);
-  while (__atomic_load_n(&(table->write_locked), __ATOMIC_SEQ_CST) == true) {}
-  #endif
   struct ht_elem *elem = table->elements[ht_hash(key) % table->size];
   struct ht_elem *new_elem = malloc(sizeof(struct ht_elem));
   new_elem->key = strdup(key);
@@ -107,25 +97,16 @@ int ht_store(struct ht_table *table, char *key, int val) {
   new_elem->next = elem;
   if (!__atomic_compare_exchange_n(table->elements + (ht_hash(key) % table->size), &elem, new_elem, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
     free(new_elem);
-    #ifdef HASHTABLE_SAFE
-    __atomic_sub_fetch(&(table->reader_count), 1, __ATOMIC_SEQ_CST);
-    #endif
     return -2;
   }
   while (elem != NULL) {
     if (strcmp(elem->key, key) == 0) {
       new_elem->skip_status = 2;
-      #ifdef HASHTABLE_SAFE
-      __atomic_sub_fetch(&(table->reader_count), 1, __ATOMIC_SEQ_CST);
-      #endif
       return -1;
     }
     elem = elem->next;
   }
   new_elem->skip_status = 0;
-  #ifdef HASHTABLE_SAFE
-  __atomic_sub_fetch(&(table->reader_count), 1, __ATOMIC_SEQ_CST);
-  #endif
   return 0;
 }
 
