@@ -6,7 +6,6 @@
 struct ht_elem {
   char *key;
   int value;
-  int skip_status; // 0 = don't skip, 1 = skip, 2 = skip & deletable
   struct ht_elem *next;
 };
 
@@ -17,10 +16,8 @@ struct ht_free_list {
 
 struct ht_table {
   struct ht_free_list *free_list;
-  struct ht_elem **elements;
-  int size;
-  bool write_locked;
-  int reader_count;
+  struct ht_bucket *root_bucket;
+  int bitlen;
 };
 
 struct ht_table *ht_init(int);
