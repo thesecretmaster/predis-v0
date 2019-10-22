@@ -6,13 +6,22 @@
 #undef HASHTABLE_SAFE
 #include "lib/hashtable.h"
 
+#include "types/type_ll.h"
+
+// #define DT_LL_LAST_NAME dt_ll_root
+
+#define GEN_DT_LL
 #include "types/int.h"
 #include "types/string.h"
+#undef GEN_DT_LL
 
 volatile __thread bool *safe = NULL;
 
-#define DATA_TYPE_COUNT 2
-static struct data_type data_types[DATA_TYPE_COUNT];
+static const struct data_type **data_types = NULL;
+static int data_type_count = 0;
+#define DATA_TYPE_COUNT data_type_count
+// #define DATA_TYPE_COUNT 2
+// static struct data_type data_types[DATA_TYPE_COUNT];
 
 static int initEle(struct main_ele *me) {
   me->ptr = NULL;
@@ -50,8 +59,21 @@ int free_predis(struct main_struct *ms) {
 }
 
 struct main_struct* init(int size) {
-  data_types[0] = data_type_int;
-  data_types[1] = data_type_string;
+  struct data_type_ll *dt_ll = &PREV_DT_LL;
+  while (dt_ll->prev != NULL) {
+    data_type_count++;
+    dt_ll = dt_ll->prev;
+  }
+  data_types = malloc(sizeof(struct data_type*)*data_type_count);
+  dt_ll = &PREV_DT_LL;
+  int ctr = 0;
+  while (dt_ll->prev != NULL) {
+    data_types[ctr] = dt_ll->type;
+    ctr++;
+    dt_ll = dt_ll->prev;
+  }
+  // data_types[0] = data_type_int;
+  // data_types[1] = data_type_string;
   struct main_struct *ms = malloc(sizeof(struct main_struct));
   ms->size = size;
   ms->hashtable = ht_init(size);
@@ -115,11 +137,11 @@ void deregister_thread(struct main_struct *ms, struct thread_info_list *ti) {
 
 // Errors:
 // NULL: Not found
-static struct data_type* getDataType(struct data_type* dt_list, int dt_max, char* dt_name) {
+static const struct data_type* getDataType(const struct data_type** dt_list, int dt_max, char* dt_name) {
   int i = 0;
   while (i < dt_max) {
-    if (strcmp(dt_list[i].name, dt_name) == 0) {
-      return &(dt_list[i]);
+    if (strcmp(dt_list[i]->name, dt_name) == 0) {
+      return dt_list[i];
     }
     i++;
   }
@@ -131,8 +153,8 @@ static struct data_type* getDataType(struct data_type* dt_list, int dt_max, char
 // -2: Out of space
 int set(char* dt_name, struct main_struct* ms, char* raw_val) {
   int dt_max = DATA_TYPE_COUNT;
-  struct data_type* dt_list = data_types;
-  struct data_type *dt = getDataType(dt_list, dt_max, dt_name);
+  const struct data_type** dt_list = data_types;
+  const struct data_type *dt = getDataType(dt_list, dt_max, dt_name);
   if (dt == NULL) {
     return -1;
   } else {
@@ -184,8 +206,8 @@ int get(char* dt_name, struct main_struct* ms, struct return_val* rval, int idx)
   if (ele->type == NULL)   { return -5; }
   if (ele->pending_delete) { return -2; }
   int dt_max = DATA_TYPE_COUNT;
-  struct data_type* dt_list = data_types;
-  struct data_type *dt = getDataType(dt_list, dt_max, dt_name);
+  const struct data_type** dt_list = data_types;
+  const struct data_type *dt = getDataType(dt_list, dt_max, dt_name);
   if (dt == NULL) {
     __atomic_store_n(safe, true, __ATOMIC_SEQ_CST);
     return -1;
@@ -209,8 +231,8 @@ int update(char* dt_name, char* updater_name, struct main_struct* ms, char* raw_
   __atomic_store_n(safe, false, __ATOMIC_SEQ_CST);
   struct main_ele *ele = ms->elements + idx;
   int dt_max = DATA_TYPE_COUNT;
-  struct data_type* dt_list = data_types;
-  struct data_type *dt = getDataType(dt_list, dt_max, dt_name);
+  const struct data_type** dt_list = data_types;
+  const struct data_type *dt = getDataType(dt_list, dt_max, dt_name);
   if (dt == NULL) {
     __atomic_store_n(safe, true, __ATOMIC_SEQ_CST);
     return -1;

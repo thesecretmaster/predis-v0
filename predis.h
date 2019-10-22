@@ -9,7 +9,7 @@
 extern volatile __thread bool *safe;
 
 struct main_ele {
-  struct data_type* type;
+  const struct data_type* type;
   void* ptr;
   bool pending_delete;
 };
