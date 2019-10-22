@@ -5,7 +5,7 @@
 #include <string.h>
 #include <getopt.h>
 #include <sys/sysinfo.h>
-#include "predis.h"
+#include "../predis.h"
 
 struct sharedstruct {
   struct thread_info_list *tilist;
