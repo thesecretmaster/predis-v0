@@ -22,21 +22,6 @@ static char *print_result(int res, struct return_val *rval, bool force_error_cod
   return ret_buf;
 }
 
-// str: The initial string or NULL
-// delims: The delimiters
-// ptr: An internal pointer. Initally null passed it, then used;
-char *strtok_ptr(char *str, char *delims, char **ptr) {
-  if (str != NULL) {
-    *ptr = str;
-  }
-  char *rval = *ptr;
-  int prefix_len = strcspn(*ptr, delims);
-  *ptr = *ptr + prefix_len;
-  **ptr = '\0';
-  *ptr = *ptr + strspn(*ptr, delims) + 1;
-  return rval;
-}
-
 static bool hshs_are_set = false;
 
 static unsigned int iget_hsh = 0;

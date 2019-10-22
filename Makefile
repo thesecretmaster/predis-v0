@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -g -pg -Ofast
 LIBS = -lm
 
-all: test bin/predis bin/predis-server
+all: cmds.c test bin/predis bin/predis-server
 
 test: bin/set-clean-test bin/update-test
 
