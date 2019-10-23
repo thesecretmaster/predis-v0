@@ -7,13 +7,11 @@
 #include "lib/hashtable.h"
 
 #include "types/type_ll.h"
-
-// #define DT_LL_LAST_NAME dt_ll_root
-
 #define GEN_DT_LL
 #include "types/int.h"
 #include "types/string.h"
 #undef GEN_DT_LL
+#include "dt_hash.c"
 
 volatile __thread bool *safe = NULL;
 
@@ -59,19 +57,30 @@ int free_predis(struct main_struct *ms) {
 }
 
 struct main_struct* init(int size) {
+  int dt_count = MAX_HASH_VALUE - MIN_HASH_VALUE + 1;
+  data_types = malloc(sizeof(struct data_type*)*dt_count);
   struct data_type_ll *dt_ll = &PREV_DT_LL;
   while (dt_ll->prev != NULL) {
-    data_type_count++;
+    char *dt_name = dt_ll->type->name;
+    int hsh = dt_hash(dt_name, strlen(dt_name)) - MIN_HASH_VALUE;
+    data_types[hsh] = dt_ll->type;
     dt_ll = dt_ll->prev;
   }
-  data_types = malloc(sizeof(struct data_type*)*data_type_count);
-  dt_ll = &PREV_DT_LL;
-  int ctr = 0;
-  while (dt_ll->prev != NULL) {
-    data_types[ctr] = dt_ll->type;
-    ctr++;
-    dt_ll = dt_ll->prev;
-  }
+
+  // struct data_type_ll *dt_ll = &PREV_DT_LL;
+  // while (dt_ll->prev != NULL) {
+  //   data_type_count++;
+  //   dt_ll = dt_ll->prev;
+  // }
+  // data_types = malloc(sizeof(struct data_type*)*data_type_count);
+  // dt_ll = &PREV_DT_LL;
+  // int ctr = 0;
+  // while (dt_ll->prev != NULL) {
+  //   data_types[ctr] = dt_ll->type;
+  //   ctr++;
+  //   dt_ll = dt_ll->prev;
+  // }
+
   // data_types[0] = data_type_int;
   // data_types[1] = data_type_string;
   struct main_struct *ms = malloc(sizeof(struct main_struct));
@@ -138,14 +147,20 @@ void deregister_thread(struct main_struct *ms, struct thread_info_list *ti) {
 // Errors:
 // NULL: Not found
 static const struct data_type* getDataType(const struct data_type** dt_list, int dt_max, char* dt_name) {
-  int i = 0;
-  while (i < dt_max) {
-    if (strcmp(dt_list[i]->name, dt_name) == 0) {
-      return dt_list[i];
-    }
-    i++;
+  int dt_name_len = strlen(dt_name);
+  if (dt_valid(dt_name, dt_name_len)) {
+    return data_types[dt_hash(dt_name, dt_name_len) - MIN_HASH_VALUE];
+  } else {
+    return NULL;
   }
-  return NULL;
+  // int i = 0;
+  // while (i < dt_max) {
+  //   if (strcmp(dt_list[i]->name, dt_name) == 0) {
+  //     return dt_list[i];
+  //   }
+  //   i++;
+  // }
+  // return NULL;
 }
 
 // Errors:

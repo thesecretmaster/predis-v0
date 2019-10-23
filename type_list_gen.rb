@@ -12,9 +12,10 @@ end.map do |k, _v|
   k
 end
 
-File.write("tmp/type_list.gperf", types.join("\n"))
-File.open("tmp/type_list.gperf", "a") do |f|
-  f << "\n%%\n"
-  f << File.read("ht_func.c")
-  f << "\nstatic char* in_word_set(register const char *str, register size_t len);\n"
-end
+print types.join("\n")
+#File.write("tmp/type_list.gperf", types.join("\n"))
+#File.open("tmp/type_list.gperf", "a") do |f|
+  #f << "\n%%\n"
+  #f << File.read("ht_func.c")
+  #f << "\nstatic char* in_word_set(register const char *str, register size_t len);\n"
+#end

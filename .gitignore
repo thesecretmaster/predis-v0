@@ -8,3 +8,5 @@ testfile.out
 perf.data
 perf.data.*
 tmp/*
+dt_hash.c
+types/names.txt
