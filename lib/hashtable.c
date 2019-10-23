@@ -76,7 +76,9 @@ int ht_find(struct ht_table *table, char *key) {
   if (elem == NULL) {
     return -1;
   } else {
-    while (strcmp(key, elem->key) != 0) {
+    unsigned int key_hash = ht_hash(key);
+    // This is just while (key != elem->key) but with speed improvements
+    while (!(key_hash == elem->key_hash && strcmp(key, elem->key) == 0)) {
       elem = elem->next;
       if (elem == NULL) { return -1; }
     }
@@ -88,7 +90,9 @@ int ht_store(struct ht_table *table, char *key, int value) {
   struct ht_elem **elem = ht_elem_internal(table, key, false);
   struct ht_elem *nn_elem = *elem;
   struct ht_elem *prev = NULL;
-  while (nn_elem != NULL && strcmp(nn_elem->key, key) != 0) {
+  unsigned int key_hash = ht_hash(key);
+  // The second clause here is just saying nn_elem->key != key, but with speed improvments
+  while (nn_elem != NULL && !(key_hash == nn_elem->key_hash && strcmp(nn_elem->key, key) == 0)) {
     prev = nn_elem;
     nn_elem = nn_elem->next;
   }
@@ -98,6 +102,7 @@ int ht_store(struct ht_table *table, char *key, int value) {
   } else {
     struct ht_elem *new_elem = malloc(sizeof(struct ht_elem));
     new_elem->key = strdup(key);
+    new_elem->key_hash = ht_hash(key);
     new_elem->value = value;
     new_elem->next = NULL;
     if (prev == NULL) {
@@ -113,7 +118,9 @@ int ht_delete(struct ht_table *table, char *key) {
   struct ht_elem **elem = ht_elem_internal(table, key, false);
   struct ht_elem *nn_elem = *elem;
   struct ht_elem *prev = NULL;
-  while (nn_elem != NULL && strcmp(key, nn_elem->key) != 0) {
+  unsigned int key_hash = ht_hash(key);
+  // The second clause is just saying key != nn_elem->key, but with speed improvments
+  while (nn_elem != NULL && !(key_hash == nn_elem->key_hash && strcmp(key, nn_elem->key) == 0)) {
     prev = nn_elem;
     nn_elem = nn_elem->next;
   }

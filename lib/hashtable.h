@@ -5,6 +5,7 @@
 
 struct ht_elem {
   char *key;
+  unsigned int key_hash;
   int value;
   struct ht_elem *next;
 };
