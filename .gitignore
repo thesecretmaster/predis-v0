@@ -7,3 +7,4 @@ testfile.expout
 testfile.out
 perf.data
 perf.data.*
+tmp/*
