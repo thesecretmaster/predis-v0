@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include "command_parser.h"
 #include "cmds.c"
+#include "command_parser_hashes.h"
 
 static const char unrecognized_command[] = "Unrecognized command: %s";
 static const char command_done[] = "DONE: %d";
@@ -22,33 +23,9 @@ static char *print_result(int res, struct return_val *rval, bool force_error_cod
   return ret_buf;
 }
 
-static bool hshs_are_set = false;
-
-static unsigned int iget_hsh = 0;
-static unsigned int iset_hsh = 0;
-static unsigned int set_hsh = 0;
-static unsigned int get_hsh = 0;
-static unsigned int update_hsh = 0;
-static unsigned int delete_hsh = 0;
-static unsigned int clean_hsh = 0;
-
-static void calculate_command_hashes() {
-  if (!hshs_are_set) {
-    iset_hsh = hash("iset", sizeof("iset") - 1);
-    iget_hsh = hash("iget", sizeof("iget") - 1);
-    set_hsh = hash("set", sizeof("set") - 1);
-    get_hsh = hash("get", sizeof("get") - 1);
-    update_hsh = hash("update", sizeof("update") - 1);
-    delete_hsh = hash("delete", sizeof("delete") - 1);
-    clean_hsh = hash("clean", sizeof("clean") - 1);
-    hshs_are_set = true;
-  }
-}
-
 char *parse_command(struct main_struct *ms, struct return_val *rval, char **args, int arglen) {
-  calculate_command_hashes();
   char *cmd;
-  int idx;
+  // struct main_ele *idx;
   int errors;
   char* ret_buf;
   int output_len;
@@ -56,60 +33,60 @@ char *parse_command(struct main_struct *ms, struct return_val *rval, char **args
   int cmd_len = strlen(cmd);
   if (in_word_set(cmd, cmd_len)) {
     unsigned int cmd_hsh = hash(cmd, cmd_len);
-    if (cmd_hsh == iset_hsh) {
-      // store <type> <value>
-      idx = set(args[1], ms, args[2]);
-      ret_buf = print_result(idx, NULL, false);
-    } else if (cmd_hsh == iget_hsh) {
-      // get <type> <index>
-      idx = strtol(args[2], NULL, 10);
-      errors = get(args[1], ms, rval, idx);
-      ret_buf = print_result(errors, rval, true);
-      if (errors == 1) {
-        free(rval->value);
+    switch (cmd_hsh) {
+      case SET_HSH: {
+        errors = set("string", ms, args[2], args[1]);
+        // errors = ht_store(ms->hashtable, args[1], idx);
+        if (errors != 0) {
+          ret_buf = malloc(sizeof(char)*(snprintf(NULL, 0, "HT_ERROR: %d", errors) + 1));
+          sprintf(ret_buf, "HT_ERROR: %d", errors);
+          del(ms, args[2]);
+        } else {
+          ret_buf = strdup("OK");
+          // ret_buf = print_result(idx, NULL, false);
+        }
+        break;
       }
-    } else if (cmd_hsh == set_hsh) {
-      idx = set("string", ms, args[2]);
-      errors = ht_store(ms->hashtable, args[1], idx);
-      if (errors != 0) {
-        ret_buf = malloc(sizeof(char)*(snprintf(NULL, 0, "HT_ERROR: %d", errors) + 1));
-        sprintf(ret_buf, "HT_ERROR: %d", errors);
-        del(ms, idx);
-      } else {
-        ret_buf = strdup("OK");
-        // ret_buf = print_result(idx, NULL, false);
+      case GET_HSH: {
+        errors = get("string", ms, rval, args[1]);
+        if (errors >= 0) {
+          ret_buf = malloc(sizeof(char)*strlen(rval->value) + 1);
+          strcpy(ret_buf, rval->value);
+        } else {
+          printf("Get error %d\n", errors);
+          ret_buf = print_result(errors, rval, true);
+        }
+        if (errors == 1) {
+          free(rval->value);
+        }
+        break;
       }
-    } else if (cmd_hsh == get_hsh) {
-      idx = ht_find(ms->hashtable, args[1]);
-      errors = get("string", ms, rval, idx);
-      if (errors >= 0) {
-        ret_buf = malloc(sizeof(char)*strlen(rval->value) + 1);
-        strcpy(ret_buf, rval->value);
-      } else {
-        ret_buf = print_result(errors, rval, false);
+      case UPDATE_HSH: {
+        // update <type> <updater> <index> <new value>
+        // idx = strtol(args[3], NULL, 10);
+        errors = update(args[1], args[2], ms, args[4], args[3]);
+        ret_buf = print_result(errors, NULL, false);
+        break;
       }
-      if (errors == 1) {
-        free(rval->value);
+      case DELETE_HSH: {
+        // delete <index>
+        // idx = strtol(args[1], NULL, 10);
+        errors = del(ms, args[1]);
+        ret_buf = print_result(errors, NULL, false);
+        break;
       }
-    } else if (cmd_hsh == update_hsh) {
-      // update <type> <updater> <index> <new value>
-      idx = strtol(args[3], NULL, 10);
-      errors = update(args[1], args[2], ms, args[4], idx);
-      ret_buf = print_result(errors, NULL, false);
-    } else if (cmd_hsh == delete_hsh) {
-      // delete <index>
-      idx = strtol(args[1], NULL, 10);
-      errors = del(ms, idx);
-      ret_buf = print_result(errors, NULL, false);
-    } else if (cmd_hsh == clean_hsh) {
-      errors = clean_queue(ms);
-      output_len = snprintf(NULL, 0, "%d", errors);
-      ret_buf = malloc(sizeof(command_done)+sizeof(char)*output_len+1);
-      snprintf(ret_buf, sizeof(command_done)+sizeof(char)*output_len+1, command_done, errors);
-    } else {
-      printf("gperf: Some kind of error occured\n");
-      ret_buf = malloc(sizeof(unrecognized_command)+sizeof(char)*cmd_len+1);
-      snprintf(ret_buf, sizeof(unrecognized_command)+sizeof(char)*cmd_len + 1, unrecognized_command, cmd);
+      case CLEAN_HSH: {
+        errors = clean_queue(ms);
+        output_len = snprintf(NULL, 0, "%d", errors);
+        ret_buf = malloc(sizeof(command_done)+sizeof(char)*output_len+1);
+        snprintf(ret_buf, sizeof(command_done)+sizeof(char)*output_len+1, command_done, errors);
+        break;
+      }
+      default: {
+        printf("gperf: Some kind of error occured\n");
+        ret_buf = malloc(sizeof(unrecognized_command)+sizeof(char)*cmd_len+1);
+        snprintf(ret_buf, sizeof(unrecognized_command)+sizeof(char)*cmd_len + 1, unrecognized_command, cmd);
+      }
     }
   } else {
     ret_buf = malloc(sizeof(unrecognized_command)+sizeof(char)*cmd_len+1);

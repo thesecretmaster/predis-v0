@@ -2,7 +2,6 @@
 #define PREDIS_H
 
 #include "data_type.h"
-#include "lib/hashtable.h"
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -13,6 +12,12 @@ struct main_ele {
   void* ptr;
   bool pending_delete;
 };
+
+// #define str(str) #str
+// #define str2(str1) str(str1)
+#define HT_VAL_TYPE struct main_ele
+// #pragma message str2(HT_VAL_TYPE)
+#include "lib/hashtable.h"
 
 struct thread_info_list {
   struct thread_info_list *next;
@@ -33,15 +38,18 @@ struct main_struct {
   struct element_queue *free_list;
   struct thread_info_list *thread_list;
   struct ht_table *hashtable;
+  struct main_ele *allocation;
+  int allocation_incr;
+  int allocation_idx;
   int thread_list_traversing_count;
   bool thread_list_write_locked;
 };
 
 struct main_struct* init(int);
-int set(char*, struct main_struct*, char*);
-int get(char*, struct main_struct*, struct return_val*, int);
-int update(char*, char*, struct main_struct*, char*, int);
-int del(struct main_struct*, int);
+int set(char*, struct main_struct*, char*, char*);
+int get(char*, struct main_struct*, struct return_val*, char*);
+int update(char*, char*, struct main_struct*, char*, char*);
+int del(struct main_struct*, char*);
 int clean_queue(struct main_struct*);
 int free_predis(struct main_struct*);
 struct thread_info_list* register_thread(struct main_struct*);

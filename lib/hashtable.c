@@ -29,6 +29,23 @@ unsigned int ht_hash(char *str) {
   return hash;
 }
 
+// unsigned int ht_hash(char *key)
+// {
+//     int len = strlen(key);
+//     uint32_t hash, i;
+//     for(hash = i = 0; i < len; ++i)
+//     {
+//         hash += key[i];
+//         hash += (hash << 10);
+//         hash ^= (hash >> 6);
+//     }
+//     hash += (hash << 3);
+//     hash ^= (hash >> 11);
+//     hash += (hash << 15);
+//     return hash;
+// }
+
+// #include <stdio.h>
 struct ht_bucket *ht_bucket_init(struct ht_table *table) {
   struct ht_bucket *newbucket = malloc(sizeof(struct ht_bucket));
   int element_len = 0x1 << table->bitlen;
@@ -36,6 +53,7 @@ struct ht_bucket *ht_bucket_init(struct ht_table *table) {
   for (int i = 0; i < element_len; i++) {
     newbucket->elements[i].elem = NULL;
   }
+  // printf("Init bucket\n");
   return newbucket;
 }
 
@@ -43,6 +61,9 @@ struct ht_table *ht_init(int bitlen) {
   bitlen = 8;
   struct ht_table *table = malloc(sizeof(struct ht_table));
   table->bitlen = bitlen;
+  table->allocation_idx = 0;
+  table->allocation_incr = 65536; // 2^16
+  table->allocation = malloc(sizeof(struct ht_elem)*table->allocation_incr);
   table->free_list = NULL;
   table->root_bucket = ht_bucket_init(table);
   return table;
@@ -70,23 +91,30 @@ struct ht_elem **ht_elem_internal(struct ht_table *table, char *key, bool create
   }
   return &(curr_bucket->elements[idx].elem);
 }
-
-int ht_find(struct ht_table *table, char *key) {
+// static int depth_count = 0;
+// static int depth_v = 0;
+HT_VAL_TYPE* ht_find(struct ht_table *table, char *key) {
   struct ht_elem *elem = *ht_elem_internal(table, key, false);
   if (elem == NULL) {
-    return -1;
+    return NULL;
   } else {
     unsigned int key_hash = ht_hash(key);
+    int depth = 0;
     // This is just while (key != elem->key) but with speed improvements
     while (!(key_hash == elem->key_hash && strcmp(key, elem->key) == 0)) {
       elem = elem->next;
-      if (elem == NULL) { return -1; }
+      depth++;
+      if (elem == NULL) { return NULL; }
     }
+    // depth_v = depth_v*depth_count + depth;
+    // depth_count++;
+    // depth_v = depth_v / depth_count;
+    // printf("depth: %d (%d)\n", depth, depth_v);
     return elem->value;
   }
 }
 
-int ht_store(struct ht_table *table, char *key, int value) {
+int ht_store(struct ht_table *table, char *key, HT_VAL_TYPE *value) {
   struct ht_elem **elem = ht_elem_internal(table, key, false);
   struct ht_elem *nn_elem = *elem;
   struct ht_elem *prev = NULL;
@@ -100,7 +128,18 @@ int ht_store(struct ht_table *table, char *key, int value) {
     nn_elem->value = value;
     return 0;
   } else {
-    struct ht_elem *new_elem = malloc(sizeof(struct ht_elem));
+    int idx = __atomic_fetch_add(&(table->allocation_idx), 1, __ATOMIC_SEQ_CST);
+    if (idx == table->allocation_incr) {
+      __atomic_store_n(&(table->allocation), malloc(sizeof(struct ht_elem)*table->allocation_incr), __ATOMIC_SEQ_CST);
+      idx = 0;
+      __atomic_store_n(&(table->allocation_idx), 1, __ATOMIC_SEQ_CST);
+    } else if (idx > table->allocation_incr) {
+      while (idx > table->allocation_idx) {
+        idx = __atomic_fetch_add(&(table->allocation_idx), 1, __ATOMIC_SEQ_CST);
+      }
+    }
+    struct ht_elem *new_elem = table->allocation + (idx % table->allocation_incr);
+    // struct ht_elem *new_elem = malloc(sizeof(struct ht_elem));
     new_elem->key = strdup(key);
     new_elem->key_hash = ht_hash(key);
     new_elem->value = value;

@@ -2,9 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sched.h>
-#include "predis.h"
-#undef HASHTABLE_SAFE
-#include "lib/hashtable.h"
+#include "predis.h" // This also includes the hashtable
 
 #include "types/type_ll.h"
 #define GEN_DT_LL
@@ -12,6 +10,8 @@
 #include "types/string.h"
 #undef GEN_DT_LL
 #include "dt_hash.c"
+
+#define HT_ALLOC_INCR 65536 // 2^16
 
 volatile __thread bool *safe = NULL;
 
@@ -93,6 +93,9 @@ struct main_struct* init(int size) {
   ms->elements = malloc((ms->size)*sizeof(struct main_ele));
   ms->thread_list_write_locked = false;
   ms->thread_list_traversing_count = 0;
+  ms->allocation_incr = HT_ALLOC_INCR;
+  ms->allocation_idx = 0;
+  ms->allocation = malloc(sizeof(struct main_ele)*ms->allocation_incr);
   struct main_ele *me_ptr = ms->elements;
   int rval;
   void* ub = ms->elements + ms->size;
@@ -164,47 +167,44 @@ static const struct data_type* getDataType(const struct data_type** dt_list, int
 }
 
 // Errors:
-// -1: Invalid data type
-// -2: Out of space
-int set(char* dt_name, struct main_struct* ms, char* raw_val) {
+int set(char* dt_name, struct main_struct* ms, char* raw_val, char *key) {
   int dt_max = DATA_TYPE_COUNT;
   const struct data_type** dt_list = data_types;
   const struct data_type *dt = getDataType(dt_list, dt_max, dt_name);
   if (dt == NULL) {
     return -1;
   } else {
-    struct main_ele *val = NULL;
+    struct main_ele *val;
     struct element_queue *fl_head;
-    int fail_count = 0;
-    int idx;
-    while (1) {
+    // Concept: Keep a fl_length field, and if it's longer than liek 5, try popping off it
+    do {
       fl_head = ms->free_list;
-      if (fl_head != NULL) {
-        if (__atomic_compare_exchange_n(&(ms->free_list), &(fl_head), fl_head->next, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
-          val = fl_head->element;
-          idx = fl_head->idx;
-          free(fl_head);
-          break;
+    } while (fl_head != NULL && !__atomic_compare_exchange_n(&(ms->free_list), &(fl_head), fl_head->next, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
+    if (fl_head != NULL) {
+      val = fl_head->element;
+    } else {
+      // If idx == SIZE_MAX
+      //   make a new allocation
+      //   reset idx
+      // If idx > SIZE_MAX
+      //   while (idx > SIZE_MAX) { idx = idx + 1}
+      int idx = __atomic_fetch_add(&(ms->allocation_idx), 1, __ATOMIC_SEQ_CST);
+      if (idx == ms->allocation_incr) {
+        __atomic_store_n(&(ms->allocation), malloc(sizeof(struct main_ele)*ms->allocation_incr), __ATOMIC_SEQ_CST);
+        idx = 0;
+        __atomic_store_n(&(ms->allocation_idx), 1, __ATOMIC_SEQ_CST);
+      } else if (idx > ms->allocation_incr) {
+        while (idx > ms->allocation_idx) {
+          idx = __atomic_fetch_add(&(ms->allocation_idx), 1, __ATOMIC_SEQ_CST);
         }
       }
-      idx = __sync_fetch_and_add(&(ms->counter), 1);
-      if (idx >= ms->size) {
-        __sync_fetch_and_sub(&(ms->counter), 1);
-      } else {
-        val = ms->elements + idx;
-        break;
-      }
-      if (fail_count > 10) {
-        return -2;
-      }
-      clean_queue(ms);
-      sched_yield();
-      fail_count++;
+      val = ms->allocation + (idx % ms->allocation_incr);
     }
     val->pending_delete = false;
     val->type = dt;
     dt->setter(&(val->ptr), raw_val);
-    return idx;
+    ht_store(ms->hashtable, key, val);
+    return 0;
   }
 }
 
@@ -214,10 +214,13 @@ int set(char* dt_name, struct main_struct* ms, char* raw_val) {
 // -3: Data types did not match
 // -4: Index out of bounds
 // -5: Element is not set
-int get(char* dt_name, struct main_struct* ms, struct return_val* rval, int idx) {
-  if (idx < 0 || idx > ms->size) { return -4; }
+int get(char* dt_name, struct main_struct* ms, struct return_val* rval, char *key) {
+
+  // if (idx < 0 || idx > ms->size) { return -4; }
   __atomic_store_n(safe, false, __ATOMIC_SEQ_CST);
-  struct main_ele *ele = ms->elements + idx;
+  // struct main_ele *ele = ms->elements + idx;
+  struct main_ele *ele = ht_find(ms->hashtable, key);
+  if (ele == NULL) { return -5; }
   if (ele->type == NULL)   { return -5; }
   if (ele->pending_delete) { return -2; }
   int dt_max = DATA_TYPE_COUNT;
@@ -242,9 +245,12 @@ int get(char* dt_name, struct main_struct* ms, struct return_val* rval, int idx)
 // -2: Pending deletion
 // -3: Wrong data type
 // -4: Invalid updater name
-int update(char* dt_name, char* updater_name, struct main_struct* ms, char* raw_new_val, int idx) {
+// -5: Invalid key
+int update(char* dt_name, char* updater_name, struct main_struct* ms, char* raw_new_val, char *key) {
   __atomic_store_n(safe, false, __ATOMIC_SEQ_CST);
-  struct main_ele *ele = ms->elements + idx;
+  // struct main_ele *ele = ms->elements + idx;
+  struct main_ele *ele = ht_find(ms->hashtable, key);
+  if (ele == NULL) { return -5; }
   int dt_max = DATA_TYPE_COUNT;
   const struct data_type** dt_list = data_types;
   const struct data_type *dt = getDataType(dt_list, dt_max, dt_name);
@@ -282,8 +288,9 @@ int update(char* dt_name, char* updater_name, struct main_struct* ms, char* raw_
 
 // Errors:
 // -1: Already deleted
-int del(struct main_struct *ms, int idx) {
-  struct main_ele *ele = ms->elements + idx;
+int del(struct main_struct *ms, char *key) {
+  struct main_ele *ele = ht_find(ms->hashtable, key);
+  if (ele == NULL) { return -1; }
   bool b = false;
   if (!__atomic_compare_exchange_n(&(ele->pending_delete), &b, true, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
     return -1;
@@ -292,7 +299,6 @@ int del(struct main_struct *ms, int idx) {
   struct element_queue *dq_ele = malloc(sizeof(struct element_queue));
   dq_ele->element = ele;
   dq_ele->next = *queue;
-  dq_ele->idx = idx;
   while (!__sync_bool_compare_and_swap(queue, dq_ele->next, dq_ele)) {
     dq_ele->next = *queue;
   }

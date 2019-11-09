@@ -3,10 +3,14 @@
 
 #include <stdbool.h>
 
+#ifndef HT_VAL_TYPE
+#define HT_VAL_TYPE int
+#endif
+
 struct ht_elem {
   char *key;
   unsigned int key_hash;
-  int value;
+  HT_VAL_TYPE* value;
   struct ht_elem *next;
 };
 
@@ -16,14 +20,17 @@ struct ht_free_list {
 };
 
 struct ht_table {
+  int allocation_idx;
+  int allocation_incr;
+  struct ht_elem *allocation;
   struct ht_free_list *free_list;
   struct ht_bucket *root_bucket;
   int bitlen;
 };
 
 struct ht_table *ht_init(int);
-int ht_find(struct ht_table*, char*);
-int ht_store(struct ht_table*, char*, int);
+HT_VAL_TYPE* ht_find(struct ht_table*, char*);
+int ht_store(struct ht_table*, char*, HT_VAL_TYPE*);
 int ht_delete(struct ht_table*, char*);
 void ht_free(struct ht_table*);
 
