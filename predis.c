@@ -204,6 +204,9 @@ int set(char* dt_name, struct main_struct* ms, char* raw_val, char *key) {
     val->type = dt;
     dt->setter(&(val->ptr), raw_val);
     ht_store(ms->hashtable, key, val);
+    if (ht_find(ms->hashtable, key) == NULL) {
+      printf("Uhhhhhh %s\n", key);
+    }
     return 0;
   }
 }
@@ -215,12 +218,11 @@ int set(char* dt_name, struct main_struct* ms, char* raw_val, char *key) {
 // -4: Index out of bounds
 // -5: Element is not set
 int get(char* dt_name, struct main_struct* ms, struct return_val* rval, char *key) {
-
   // if (idx < 0 || idx > ms->size) { return -4; }
   __atomic_store_n(safe, false, __ATOMIC_SEQ_CST);
   // struct main_ele *ele = ms->elements + idx;
   struct main_ele *ele = ht_find(ms->hashtable, key);
-  if (ele == NULL) { return -5; }
+  if (ele == NULL) { return -6; }
   if (ele->type == NULL)   { return -5; }
   if (ele->pending_delete) { return -2; }
   int dt_max = DATA_TYPE_COUNT;

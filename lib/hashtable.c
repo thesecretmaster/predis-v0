@@ -84,32 +84,36 @@ struct ht_elem **ht_elem_internal(struct ht_table *table, char *key, bool create
     level++;
     idx = (hsh >> (level * table->bitlen)) & idx_bitmask;
   }
-  if (createbucket && curr_bucket->elements[idx].elem != NULL && ((level + 1) * table->bitlen) < sizeof(union ht_bucket_elem)) {
+  struct ht_elem *tmpelem = curr_bucket->elements[idx].elem;
+  unsigned int hsh2;
+  unsigned int idx2;
+  // Note that since we simply overwrite the old elem pointer, we will have some memory leakage.
+  if (createbucket && tmpelem != NULL && ((level + 1) * table->bitlen) < sizeof(union ht_bucket_elem)) {
+    hsh2 = tmpelem->key_hash;
+    idx2 = (hsh2 >> ((level + 1) * table->bitlen)) & idx_bitmask;
     curr_bucket->elements[idx] = ht_set_bucket(ht_bucket_init(table));
     curr_bucket = curr_bucket->elements[idx].bucket;
     idx = (hsh >> ((level + 1) * table->bitlen)) & idx_bitmask;
+    if (!(hsh2 == hsh && strcmp(tmpelem->key, key) == 0)) {
+      curr_bucket->elements[idx2].elem = tmpelem;
+    }
   }
   return &(curr_bucket->elements[idx].elem);
 }
-// static int depth_count = 0;
-// static int depth_v = 0;
+
 HT_VAL_TYPE* ht_find(struct ht_table *table, char *key) {
   struct ht_elem *elem = *ht_elem_internal(table, key, false);
   if (elem == NULL) {
     return NULL;
   } else {
     unsigned int key_hash = ht_hash(key);
-    int depth = 0;
     // This is just while (key != elem->key) but with speed improvements
     while (!(key_hash == elem->key_hash && strcmp(key, elem->key) == 0)) {
       elem = elem->next;
-      depth++;
-      if (elem == NULL) { return NULL; }
+      if (elem == NULL) {
+        return NULL;
+      }
     }
-    // depth_v = depth_v*depth_count + depth;
-    // depth_count++;
-    // depth_v = depth_v / depth_count;
-    // printf("depth: %d (%d)\n", depth, depth_v);
     return elem->value;
   }
 }
@@ -145,7 +149,7 @@ int ht_store(struct ht_table *table, char *key, HT_VAL_TYPE *value) {
     new_elem->value = value;
     new_elem->next = NULL;
     if (prev == NULL) {
-      *elem = new_elem;
+      __atomic_store_n(elem, new_elem, __ATOMIC_SEQ_CST);
     } else {
       prev->next = new_elem;
     }

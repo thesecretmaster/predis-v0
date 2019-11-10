@@ -23,7 +23,7 @@ struct item {
   bool get;
 };
 
-#define ITEM_COUNT 10000
+#define ITEM_COUNT 100000
 
 int main() {
   struct item items[ITEM_COUNT];

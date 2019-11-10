@@ -27,20 +27,27 @@ char *parse_command(struct main_struct *ms, struct return_val *rval, char **args
   char *cmd;
   // struct main_ele *idx;
   int errors;
+  int ret_buf_size;
   char* ret_buf;
   int output_len;
   cmd = args[0];
+  int gerr;
   int cmd_len = strlen(cmd);
   if (in_word_set(cmd, cmd_len)) {
     unsigned int cmd_hsh = hash(cmd, cmd_len);
     switch (cmd_hsh) {
       case SET_HSH: {
+        // printf("set %s %s\n", args[1], args[2]);
         errors = set("string", ms, args[2], args[1]);
+        if ((gerr = get("string", ms, rval, args[1])) != 0) {
+          printf("If you see this... WTF? (gerr: %d, serr: %d)\n", gerr, errors);
+        }
         // errors = ht_store(ms->hashtable, args[1], idx);
         if (errors != 0) {
-          ret_buf = malloc(sizeof(char)*(snprintf(NULL, 0, "HT_ERROR: %d", errors) + 1));
-          sprintf(ret_buf, "HT_ERROR: %d", errors);
-          del(ms, args[2]);
+          ret_buf_size = snprintf(NULL, 0, "HT_ERROR: %d", errors);
+          ret_buf = malloc(sizeof(char)*(ret_buf_size + 1));
+          snprintf(ret_buf, ret_buf_size + 1, "HT_ERROR: %d", errors);
+          // del(ms, args[2]);
         } else {
           ret_buf = strdup("OK");
           // ret_buf = print_result(idx, NULL, false);
@@ -48,12 +55,13 @@ char *parse_command(struct main_struct *ms, struct return_val *rval, char **args
         break;
       }
       case GET_HSH: {
+        // printf("get %s\n", args[1]);
         errors = get("string", ms, rval, args[1]);
         if (errors >= 0) {
           ret_buf = malloc(sizeof(char)*strlen(rval->value) + 1);
           strcpy(ret_buf, rval->value);
         } else {
-          printf("Get error %d\n", errors);
+          // printf("Get error %d\n", errors);
           ret_buf = print_result(errors, rval, true);
         }
         if (errors == 1) {
