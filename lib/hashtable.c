@@ -55,7 +55,6 @@ static struct ht_bucket *ht_bucket_init(struct ht_table *table) {
   for (int i = 0; i < element_len; i++) {
     newbucket->elements[i].elem = NULL;
   }
-  // printf("Init bucket\n");
   return newbucket;
 }
 
@@ -80,7 +79,6 @@ void ht_print(struct ht_table *table) {
 
 }
 
-#include <stdio.h>
 // Note: Before we return EVER mutate or return the value of this function,
 // we need to confirm that it's still an `elem` and not a `bucket`
 static union ht_bucket_elem *ht_elem_internal(struct ht_table *table, const char *key, bool createbucket) {
@@ -93,14 +91,12 @@ static union ht_bucket_elem *ht_elem_internal(struct ht_table *table, const char
   while (tmpidx.elem != NULL && ht_is_bucket(tmpidx)) {
     curr_bucket = ht_get_bucket(tmpidx);
     level++;
-    // printf("i:%d\n", idx);
     idx = (hsh >> (level * table->bitlen)) & idx_bitmask;
     tmpidx = curr_bucket->elements[idx];
   }
   if (tmpidx.elem == NULL || !createbucket || tmpidx.elem->key_hash == hsh) {
     return &(curr_bucket->elements[idx]);
   }
-  // printf("mv\n");
   unsigned int nidx, idx2;
   union ht_bucket_elem new_bucket = ht_set_bucket(ht_bucket_init(table));
   level++;
@@ -113,7 +109,6 @@ static union ht_bucket_elem *ht_elem_internal(struct ht_table *table, const char
     while (ht_is_bucket(tmpidx)) {
       curr_bucket = ht_get_bucket(tmpidx);
       level++;
-      // printf("i:%d\n", idx);
       idx = (hsh >> (level * table->bitlen)) & idx_bitmask;
       tmpidx = curr_bucket->elements[idx];
     }
@@ -125,57 +120,6 @@ static union ht_bucket_elem *ht_elem_internal(struct ht_table *table, const char
     return ht_elem_internal(table, key, createbucket);
   }
   return &(ht_get_bucket(new_bucket)->elements[nidx]);
-  // printf("inull %d %u %d\n", level, hsh, idx);
-  // Concept:
-  // We could stop here and `return &tmpidx`
-  // But we also want to build a new bucket and CAS it in
-  // if createbucket && tmpidx.elem != NULL
-  // unsigned int hsh2;
-  // unsigned int idx2;
-  // int oidx = idx;
-  // bool firstitr = true;
-  // union ht_bucket_elem new_bucket;
-  // union ht_bucket_elem old_elem = curr_bucket->elements[idx];
-  // // Note that since we simply overwrite the old elem pointer, we will have some memory leakage.
-  // if (createbucket && old_elem.elem != NULL && hsh != old_elem.elem->key_hash && (level * table->bitlen) < CHAR_BIT*sizeof(union ht_bucket_elem)) {
-  //   // printf("All the conditions are good to make a new bucket\n");
-  //   new_bucket = ht_set_bucket(ht_bucket_init(table));
-  //   do {
-  //     while (ht_is_bucket(old_elem)) {
-  //       // printf("Old elem was a bucket, so we're zooming in\n");
-  //       curr_bucket = ht_get_bucket(old_elem);
-  //       level++;
-  //       idx = (hsh >> (level * table->bitlen)) & idx_bitmask;
-  //       old_elem = curr_bucket->elements[idx];
-  //     }
-  //     if (old_elem.elem == NULL || (level * table->bitlen) >= CHAR_BIT*sizeof(union ht_bucket_elem)) {
-  //       // if (old_elem.elem == NULL) {
-  //       //   printf("Null elem! We can just return that\n");
-  //       // } else {
-  //       //   printf("Actually, we hit the base of depth (%d) and will just return that\n", level);
-  //       // }
-  //       // Same as the exit condition of the function
-  //       return &(curr_bucket->elements[idx]);
-  //     }
-  //     if (!firstitr) {
-  //       // printf("fiter\n");
-  //       ht_get_bucket(new_bucket)->elements[idx2].elem = NULL;
-  //     } else {
-  //       firstitr = false;
-  //     }
-  //     hsh2 = old_elem.elem->key_hash;
-  //     idx2 = (hsh2 >> ((level + 1) * table->bitlen)) & idx_bitmask;
-  //     // printf("idx2 (%d): %u %d\n", level + 1, hsh2, idx2);
-  //     // printf("idx: %d\n", idx);
-  //     if (hsh2 != hsh || strcmp(old_elem.elem->key, key) != 0) {
-  //       // printf("Copy down %d (%s)\n", idx2, ht_is_bucket(ht_get_bucket(new_bucket)->elements[idx2]) ? "isbuk :(" : "nobuk!");
-  //       ht_get_bucket(new_bucket)->elements[idx2].elem = old_elem.elem;
-  //     }
-  //   } while (!__atomic_compare_exchange_n(&(curr_bucket->elements[oidx].bucket), &old_elem.bucket, ht_set_bucket(new_bucket.bucket).bucket, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
-  //   idx = (hsh >> (level + 1 * table->bitlen)) & idx_bitmask;
-  //   return &(ht_get_bucket(new_bucket)->elements[idx]);
-  // }
-  // return &(curr_bucket->elements[idx]);
 }
 
 HT_VAL_TYPE* ht_find(struct ht_table *table, const char *key) {
@@ -227,7 +171,7 @@ int ht_store(struct ht_table *table, const char *key, HT_VAL_TYPE *value) {
       new_elem.elem->value = value;
       new_elem.elem->next = be.elem;
     } else /* if elem->key_hash != key_hash */ {
-      printf("%08X\n%08X\n", be.elem->key_hash, key_hash);
+      // printf("%08X\n%08X\n", be.elem->key_hash, key_hash);
       return -1; // This would make literally no sense based on how the HT is structured
     }
     // In my perfect world, c would let me use just * instead of *.elem, but it
