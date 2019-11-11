@@ -23,19 +23,28 @@ command_parser_hashes.h: command_parser_hashgen
 
 command_parser.c: command_parser_hashes.h
 
-predis_deps: predis.c types/*.c lib/hashtable.c dt_hash.c
+PREDIS_DEPS = predis.c types/*.c lib/hashtable.c dt_hash.c
 
-bin/set-clean-test: tests/set-clean-test.c predis_deps
+bin/set-clean-test: tests/set-clean-test.c $(PREDIS_DEPS)
 	$(CC) $(CFLAGS) $(LIBS) -pthread -o $@ tests/set-clean-test.c predis.c types/*.c lib/hashtable.c
 
-bin/update-test: tests/update-test.c predis_deps
+bin/update-test: tests/update-test.c $(PREDIS_DEPS)
 	$(CC) $(CFLAGS) $(LIBS) -pthread -o $@ tests/update-test.c predis.c types/*.c lib/hashtable.c
 
-bin/predis: cli.c command_parser.c predis_deps
+bin/predis: cli.c command_parser.c $(PREDIS_DEPS)
 	$(CC) $(CFLAGS) $(LIBS) -o bin/predis cli.c predis.c types/*.c command_parser.c lib/hashtable.c -ledit
 
-bin/predis-server: server.c cmds.c command_parser.c predis_deps
+bin/predis-server: server.c cmds.c command_parser.c $(PREDIS_DEPS)
 	$(CC) $(CFLAGS) $(LIBS) -o $@ $< -pthread predis.c lib/hashtable.c types/*.c command_parser.c
+
+serve: bin/predis-server
+	$<
+
+ptest: bin/parallel-test
+	$<
+
+htest: bin/hashtable-test
+	$<
 
 bin/gen_test_file: gen_test_file.c
 	$(CC) $(CFLAGS) $(LIBS) -o bin/gen_test_file gen_test_file.c

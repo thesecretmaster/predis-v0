@@ -214,13 +214,14 @@ int main(int argc, char *argv[]) {
     if (all)
       break;
   }
-  float start_time = clock();
+  struct timespec t1, t2;
+  clock_gettime(CLOCK_REALTIME, &t1);
   __atomic_store_n(start, true, __ATOMIC_SEQ_CST);
   for (int i = 0; i < thread_count; i++) {
     pthread_join(thread_ids[i], NULL);
   }
-  float end_time = clock();
-  printf("Run time: %f\n", (end_time - start_time) / CLOCKS_PER_SEC);
+  clock_gettime(CLOCK_REALTIME, &t2);
+  printf("Run time: %.4fs\n", (t2.tv_sec - t1.tv_sec) + ((t2.tv_nsec - t1.tv_nsec) / 1000000000.0));
   if (runchecks) {
     printf("Checking records...\n");
     int set_ary_ctr = 0;
