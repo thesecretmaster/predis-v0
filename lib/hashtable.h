@@ -29,10 +29,12 @@ struct ht_table {
 };
 
 struct ht_table *ht_init(int);
-HT_VAL_TYPE* ht_find(struct ht_table*, char*);
-int ht_store(struct ht_table*, char*, HT_VAL_TYPE*);
+HT_VAL_TYPE* ht_find(struct ht_table*, const char*);
+int ht_store(struct ht_table*, const char*, HT_VAL_TYPE*);
 int ht_delete(struct ht_table*, char*);
 void ht_free(struct ht_table*);
+void ht_print(struct ht_table*);
+const unsigned int ht_hash(const char*);
 
 struct ht_free_list *ht_clean_prepare(struct ht_table*);
 int ht_clean_run(struct ht_free_list*);
