@@ -6,6 +6,8 @@
 #include <string.h>
 #include <pthread.h>
 #include <sched.h>
+#include <getopt.h>
+#include <sys/sysinfo.h>
 #include "../lib/random_string.h"
 
 struct item {
@@ -38,9 +40,6 @@ volatile int good_set = 0;
 volatile int good_get = 0;
 volatile int bad_set = 0;
 volatile int bad_get = 0;
-
-#define ITEM_COUNT 100000
-#define THREAD_COUNT 6
 
 void *tfunc(void *_shared) {
   struct tdata *shared = _shared;
@@ -109,9 +108,43 @@ void *tfunc(void *_shared) {
   return NULL;
 }
 
-int main() {
-  int item_count = ITEM_COUNT;
-  int thread_count = THREAD_COUNT;
+int main(int argc, char *argv[]) {
+  int item_count = 100000;
+  int thread_count = get_nprocs();
+  bool runchecks = false;
+
+  const struct option prog_opts[] = {
+    {"skipcheck", optional_argument, NULL, 'r'},
+    {"threads", optional_argument, NULL, 't'},
+    {"items", optional_argument, NULL, 'c'}
+  };
+  int c;
+  while (1) {
+    c = getopt_long(argc, argv, "xtc", prog_opts, NULL);
+    if (c == -1) { break; }
+    switch (c) {
+      case 'r':
+        runchecks = true;
+        break;
+      case 't':
+        if (optarg != NULL) {
+          thread_count = strtol(optarg, NULL, 10);
+        } else {
+          printf("-t requires an argument\n");
+        }
+        break;
+      case 'c':
+        if (optarg != NULL) {
+          item_count = strtol(optarg, NULL, 10);
+        } else {
+          printf("-c requires an argument\n");
+        }
+        break;
+    }
+  }
+
+  printf("Item Count: %d\nThread Count: %d\nRunning Checks? %s\n", item_count, thread_count, runchecks ? "true" : "false");
+
   int items_per_queue = (item_count / thread_count) * 2;
 
   int *rec_ctr = malloc(sizeof(int));
@@ -181,41 +214,46 @@ int main() {
     if (all)
       break;
   }
+  float start_time = clock();
   __atomic_store_n(start, true, __ATOMIC_SEQ_CST);
   for (int i = 0; i < thread_count; i++) {
     pthread_join(thread_ids[i], NULL);
   }
-  printf("Checking records...\n");
-  int set_ary_ctr = 0;
-  bool any;
-  int err = 0;
-  int fail_ctr = 0;
-  float avj_retries = 0;
-  char **set_ary = malloc(sizeof(char*)*item_count);
-  for (int i = 0; i < item_count * 2; i++) {
-    if (records[i].fail) {
-      fail_ctr++;
-    } else if (records[i].retry_count > 0) {
-      avj_retries = ((avj_retries * (i - fail_ctr)) + records[i].retry_count) / ((i - fail_ctr) + 1);
-    }
-    if (records[i].set) {
-      set_ary[set_ary_ctr] = records[i].item->key;
-      set_ary_ctr++;
-    } else if (records[i].get) {
-      any = false;
-      for (int j = 0; j < set_ary_ctr; j++) {
-        if (strcmp(set_ary[j], records[i].item->key) == 0) {
-          any = true;
-          break;
+  float end_time = clock();
+  printf("Run time: %f\n", (end_time - start_time) / CLOCKS_PER_SEC);
+  if (runchecks) {
+    printf("Checking records...\n");
+    int set_ary_ctr = 0;
+    bool any;
+    int err = 0;
+    int fail_ctr = 0;
+    float avj_retries = 0;
+    char **set_ary = malloc(sizeof(char*)*item_count);
+    for (int i = 0; i < item_count * 2; i++) {
+      if (records[i].fail) {
+        fail_ctr++;
+      } else if (records[i].retry_count > 0) {
+        avj_retries = ((avj_retries * (i - fail_ctr)) + records[i].retry_count) / ((i - fail_ctr) + 1);
+      }
+      if (records[i].set) {
+        set_ary[set_ary_ctr] = records[i].item->key;
+        set_ary_ctr++;
+      } else if (records[i].get) {
+        any = false;
+        for (int j = 0; j < set_ary_ctr; j++) {
+          if (strcmp(set_ary[j], records[i].item->key) == 0) {
+            any = true;
+            break;
+          }
+        }
+        if (!any) {
+          err++;
         }
       }
-      if (!any) {
-        err++;
-      }
     }
+    printf("Record check complete (%d errors)\n", err);
+    printf("%d total failures\n%f retries before sucess\n", fail_ctr, avj_retries);
   }
-  printf("Record check complete (%d errors)\n", err);
-  printf("%d total failures\n%f retries before sucess\n", fail_ctr, avj_retries);
   printf("Set:\n  Good:  %d\n  Bad:   %d\nGet:\n  Good:  %d\n  Bad:   %d\n\n  Total: %d\n", good_set, bad_set, good_get, bad_get, item_count);
   return 0;
 }
