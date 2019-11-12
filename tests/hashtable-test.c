@@ -1,18 +1,30 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <getopt.h>
 #include <time.h>
 #include "../lib/random_string.h"
 #define HT_VAL_TYPE int
 #include "../lib/hashtable.h"
 
+int main(int argc, char *argv[]) {
+  int c;
+  int ht_count = 10000;
 
-int main() {
+  while ((c = getopt (argc, argv, "c:")) != -1)
+   switch (c)
+     {
+     case 'c':
+       ht_count = strtol(optarg, NULL, 10);
+       break;
+     }
+
+  printf("Running test with %d entries\n", ht_count);
   struct ht_table *table = ht_init(8);
   char *s;
   int *j;
   int f;
   srand((unsigned int) time(NULL));
-  for (int i = 0; i < 300; i++) {
+  for (int i = 0; i < ht_count; i++) {
     // printf("+STORE\n");
     s = random_string('k');
     if ((f = ht_store(table, s, &i)) != 0) {
