@@ -6,8 +6,8 @@ all: dt_hash.c cmds.c bin/predis bin/predis-server bin/parallel-test bin/hashtab
 
 test: bin/set-clean-test bin/update-test
 
-types/names.txt: type_list_gen.rb
-	ruby type_list_gen.rb > types/names.txt
+types/names.txt: type_list_gen.sh
+	./type_list_gen.sh > types/names.txt
 
 dt_hash.c: types/names.txt
 	gperf --readonly-tables --hash-function-name=dt_hash --lookup-function-name=dt_valid types/names.txt > dt_hash.c
