@@ -20,10 +20,11 @@ struct ht_free_list {
 };
 
 struct ht_table {
-  int allocation_idx;
+  volatile int allocation_idx;
   int allocation_incr;
+  volatile int tlock;
   struct ht_elem *allocation;
-  struct ht_free_list *free_list;
+  volatile struct ht_free_list *free_list;
   struct ht_bucket *root_bucket;
   int bitlen;
 };

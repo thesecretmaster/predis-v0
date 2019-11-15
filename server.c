@@ -41,6 +41,7 @@ void intHandler(int foo) {
 }
 
 int main() {
+  printf("Starting server from process %d\n", getpid());
   struct addrinfo *addrinfo;
   struct addrinfo hints;
   memset(&hints, 0, sizeof(hints));

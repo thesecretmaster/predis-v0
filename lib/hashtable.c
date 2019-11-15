@@ -6,7 +6,7 @@
 #include <assert.h>
 
 struct ht_bucket {
-  union ht_bucket_elem *elements;
+  volatile union ht_bucket_elem *elements;
 };
 
 // We do a very sketchy thing here, where we store a flag in the lowest
@@ -59,7 +59,7 @@ static struct ht_bucket *ht_bucket_init(struct ht_table *table) {
 }
 
 static void ht_free_bucket(struct ht_bucket *buk) {
-  free(buk->elements);
+  free((union ht_bucket_elem*)buk->elements);
   free(buk);
 }
 
@@ -68,6 +68,7 @@ struct ht_table *ht_init(int bitlen) {
   struct ht_table *table = malloc(sizeof(struct ht_table));
   table->bitlen = bitlen;
   table->allocation_idx = 0;
+  // table->tlock = 0;
   table->allocation_incr = 65536; // 2^16
   table->allocation = malloc(sizeof(struct ht_elem)*table->allocation_incr);
   table->free_list = NULL;
@@ -78,15 +79,15 @@ struct ht_table *ht_init(int bitlen) {
 void ht_print(struct ht_table *table) {
 
 }
-
+#include <stdio.h>
 // Note: Before we return EVER mutate or return the value of this function,
 // we need to confirm that it's still an `elem` and not a `bucket`
-static union ht_bucket_elem *ht_elem_internal(struct ht_table *table, const char *key, bool createbucket) {
+static volatile union ht_bucket_elem *ht_elem_internal(struct ht_table *table, const char *key, bool createbucket) {
   const unsigned int hsh = ht_hash(key);
   unsigned int level = 0;
   const unsigned int idx_bitmask = ~(~0x0 << table->bitlen);
   unsigned int idx = (hsh >> (level * table->bitlen)) & idx_bitmask;
-  struct ht_bucket *curr_bucket = table->root_bucket;
+  volatile struct ht_bucket *curr_bucket = table->root_bucket;
   union ht_bucket_elem tmpidx = curr_bucket->elements[idx];
   while (tmpidx.elem != NULL && ht_is_bucket(tmpidx)) {
     curr_bucket = ht_get_bucket(tmpidx);
@@ -101,21 +102,34 @@ static union ht_bucket_elem *ht_elem_internal(struct ht_table *table, const char
   union ht_bucket_elem new_bucket = ht_set_bucket(ht_bucket_init(table));
   level++;
   idx2 = 0;
-  // What if we need to alloc multiple levels?
-  // I.e. idx2 == nidx
+  bool firstitr = true;
+  int itrs =0;
   do {
-    ht_get_bucket(new_bucket)->elements[idx2].elem = NULL;
-    tmpidx = curr_bucket->elements[idx];
-    while (ht_is_bucket(tmpidx)) {
-      curr_bucket = ht_get_bucket(tmpidx);
-      level++;
-      idx = (hsh >> (level * table->bitlen)) & idx_bitmask;
-      tmpidx = curr_bucket->elements[idx];
+    if (!firstitr) {
+      ht_get_bucket(new_bucket)->elements[idx2].elem = NULL;
+      // NOTE: We're not actually doing anything with .elem, unions of pointers just suck.
+      tmpidx.elem = __atomic_load_n(&(curr_bucket->elements[idx].elem), __ATOMIC_SEQ_CST);
+      while (tmpidx.elem != NULL && ht_is_bucket(tmpidx)) {
+        curr_bucket = ht_get_bucket(tmpidx);
+        level++;
+        idx = (hsh >> (level * table->bitlen)) & idx_bitmask;
+        // NOTE: We're not actually doing anything with .elem, unions of pointers just suck.
+        tmpidx.elem = __atomic_load_n(&(curr_bucket->elements[idx].elem), __ATOMIC_SEQ_CST);
+      }
+      if (tmpidx.elem == NULL || tmpidx.elem->key_hash == hsh) {
+        return &(curr_bucket->elements[idx]);
+      }
+    } else {
+      firstitr = false;
     }
+    itrs++;
     nidx = (hsh >> (level * table->bitlen)) & idx_bitmask;
     idx2 = (tmpidx.elem->key_hash >> (level * table->bitlen)) & idx_bitmask;
     ht_get_bucket(new_bucket)->elements[idx2] = tmpidx;
   } while (!__atomic_compare_exchange_n(&(curr_bucket->elements[idx].elem), &tmpidx.elem, new_bucket.elem, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
+  if (itrs > 1) {
+    printf("Competed %d\n", itrs);
+  }
   if (nidx == idx2) {
     return ht_elem_internal(table, key, createbucket);
   }
@@ -123,35 +137,45 @@ static union ht_bucket_elem *ht_elem_internal(struct ht_table *table, const char
 }
 
 HT_VAL_TYPE* ht_find(struct ht_table *table, const char *key) {
-  union ht_bucket_elem be = *ht_elem_internal(table, key, false);
-  while (ht_is_bucket(be)) { be = *ht_elem_internal(table, key, false); }
+  // while (!__atomic_test_and_set(&(table->tlock), __ATOMIC_SEQ_CST)) {};
+  union ht_bucket_elem be;
+  do {
+    be = *ht_elem_internal(table, key, false);
+  } while (ht_is_bucket(be));
   struct ht_elem *elem = be.elem;
   if (elem == NULL) {
+    // __atomic_clear(&(table->tlock), __ATOMIC_SEQ_CST);
     return NULL;
   } else {
     unsigned int key_hash = ht_hash(key);
+    int itrs = 0;
     // This is just while (key != elem->key) but with speed improvements
     while (!(key_hash == elem->key_hash && strcmp(key, elem->key) == 0)) {
       elem = elem->next;
+      itrs++;
       if (elem == NULL) {
+        // __atomic_clear(&(table->tlock), __ATOMIC_SEQ_CST);
         return NULL;
       }
     }
+    // __atomic_clear(&(table->tlock), __ATOMIC_SEQ_CST);
     return elem->value;
   }
 }
 // Idea: Different hashes for the linked lists and the root elements
 // Idea: Use const for the key and pass the hash into ht_elem_internal
 int ht_store(struct ht_table *table, const char *key, HT_VAL_TYPE *value) {
+  // while (!__atomic_test_and_set(&(table->tlock), __ATOMIC_SEQ_CST)) {};
   const unsigned int key_hash = ht_hash(key);
-  union ht_bucket_elem *beptr;
+  volatile union ht_bucket_elem *beptr;
   union ht_bucket_elem be;
   int idx;
   union ht_bucket_elem new_elem;
   do {
     do {
       beptr = ht_elem_internal(table, key, true);
-      be = *beptr;
+      // NOTE: We're not actually doing anything with (struct ht_elem), unions of pointers just suck.
+      be.elem = __atomic_load_n((struct ht_elem**)beptr, __ATOMIC_SEQ_CST);
     } while (ht_is_bucket(be));
     // Assuming elem hasn't been deleted
     if (be.elem == NULL || be.elem->key_hash == key_hash) {
@@ -172,11 +196,13 @@ int ht_store(struct ht_table *table, const char *key, HT_VAL_TYPE *value) {
       new_elem.elem->next = be.elem;
     } else /* if elem->key_hash != key_hash */ {
       // printf("%08X\n%08X\n", be.elem->key_hash, key_hash);
+      // __atomic_clear(&(table->tlock), __ATOMIC_SEQ_CST);
       return -1; // This would make literally no sense based on how the HT is structured
     }
     // In my perfect world, c would let me use just * instead of *.elem, but it
     // is too dumb to know that a union of pointers is just a pointer.
   } while (!__atomic_compare_exchange_n((struct ht_elem**)beptr, &be.elem, new_elem.elem, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
+  // __atomic_clear(&(table->tlock), __ATOMIC_SEQ_CST);
   return 0;
 }
 

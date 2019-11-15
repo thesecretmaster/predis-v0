@@ -33,6 +33,7 @@ struct element_queue {
 struct main_struct {
   int size;
   int counter;
+  volatile int lock;
   struct main_ele *elements;
   struct element_queue *deletion_queue;
   struct element_queue *free_list;

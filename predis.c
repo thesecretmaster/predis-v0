@@ -90,6 +90,7 @@ struct main_struct* init(int size) {
   ms->free_list = NULL;
   ms->thread_list = NULL;
   ms->counter = 0;
+  ms->lock = 0;
   ms->elements = malloc((ms->size)*sizeof(struct main_ele));
   ms->thread_list_write_locked = false;
   ms->thread_list_traversing_count = 0;
@@ -174,6 +175,7 @@ int set(char* dt_name, struct main_struct* ms, char* raw_val, char *key) {
   if (dt == NULL) {
     return -1;
   } else {
+    while (!__atomic_test_and_set(&(ms->lock), __ATOMIC_SEQ_CST)) {};
     struct main_ele *val;
     struct element_queue *fl_head;
     // Concept: Keep a fl_length field, and if it's longer than liek 5, try popping off it
@@ -207,6 +209,7 @@ int set(char* dt_name, struct main_struct* ms, char* raw_val, char *key) {
     if (ht_find(ms->hashtable, key) == NULL) {
       printf("Uhhhhhh %s\n", key);
     }
+    __atomic_clear(&(ms->lock), __ATOMIC_SEQ_CST);
     return 0;
   }
 }
@@ -219,25 +222,29 @@ int set(char* dt_name, struct main_struct* ms, char* raw_val, char *key) {
 // -5: Element is not set
 int get(char* dt_name, struct main_struct* ms, struct return_val* rval, char *key) {
   // if (idx < 0 || idx > ms->size) { return -4; }
+  __atomic_test_and_set(&(ms->lock), __ATOMIC_SEQ_CST);
   __atomic_store_n(safe, false, __ATOMIC_SEQ_CST);
   // struct main_ele *ele = ms->elements + idx;
   struct main_ele *ele = ht_find(ms->hashtable, key);
-  if (ele == NULL) { return -6; }
-  if (ele->type == NULL)   { return -5; }
-  if (ele->pending_delete) { return -2; }
+  if (ele == NULL) { __atomic_clear(&(ms->lock), __ATOMIC_SEQ_CST); return -6; }
+  if (ele->type == NULL)   { __atomic_clear(&(ms->lock), __ATOMIC_SEQ_CST); return -5; }
+  if (ele->pending_delete) { __atomic_clear(&(ms->lock), __ATOMIC_SEQ_CST); return -2; }
   int dt_max = DATA_TYPE_COUNT;
   const struct data_type** dt_list = data_types;
   const struct data_type *dt = getDataType(dt_list, dt_max, dt_name);
   if (dt == NULL) {
     __atomic_store_n(safe, true, __ATOMIC_SEQ_CST);
+    __atomic_clear(&(ms->lock), __ATOMIC_SEQ_CST);
     return -1;
   } else {
     if (strcmp(ele->type->name, dt_name) != 0) {
+      __atomic_clear(&(ms->lock), __ATOMIC_SEQ_CST);
       return -3;
     }
     void *val = ele->ptr;
     int errors = dt->getter(val, rval);
     __atomic_store_n(safe, true, __ATOMIC_SEQ_CST);
+    __atomic_clear(&(ms->lock), __ATOMIC_SEQ_CST);
     return errors;
   }
 }

@@ -26,7 +26,7 @@ int main(int argc, char *argv[]) {
   srand((unsigned int) time(NULL));
   for (int i = 0; i < ht_count; i++) {
     // printf("+STORE\n");
-    s = random_string('k');
+    s = random_string('k', NULL, NULL);
     if ((f = ht_store(table, s, &i)) != 0) {
       printf("Yikes %d\n", f);
     }
