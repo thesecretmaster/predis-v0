@@ -13,6 +13,7 @@
 #include <sys/sysinfo.h>
 #include "../lib/random_string.h"
 #define HT_VAL_TYPE char
+pthread_mutex_t global_mut;
 #include "../lib/hashtable.h"
 
 struct item {
@@ -313,14 +314,14 @@ int main(int argc, char *argv[]) {
   // int *tlock = malloc(sizeof(int));
   // printf("Tlock %p\n", tlock);
   // *tlock = 0;
-  pthread_mutex_t *tlock = malloc(sizeof(pthread_mutex_t));
-  pthread_mutex_init(tlock, NULL);
+  // pthread_mutex_t *tlock = malloc(sizeof(pthread_mutex_t));
+  pthread_mutex_init(&global_mut, NULL);
   for (int i = 0; i < thread_count; i++) {
     shared = malloc(sizeof(struct tdata));
     shared->start = start;
     shared->qlen = qidx[i];
     shared->items = queues[i];
-    shared->tlock = tlock;
+    // shared->tlock = tlock;
     shared->hashtable = ht;
     shared->thread_ready = thread_ready + i;
     shared->records = records;

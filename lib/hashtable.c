@@ -83,6 +83,7 @@ void ht_print(struct ht_table *table) {
 // Note: Before we return EVER mutate or return the value of this function,
 // we need to confirm that it's still an `elem` and not a `bucket`
 static volatile union ht_bucket_elem *ht_elem_internal(struct ht_table *table, const char *key, bool createbucket) {
+  pthread_mutex_lock(&global_mut);
   const unsigned int hsh = ht_hash(key);
   unsigned int level = 0;
   const unsigned int idx_bitmask = ~(~0x0 << table->bitlen);
@@ -96,6 +97,7 @@ static volatile union ht_bucket_elem *ht_elem_internal(struct ht_table *table, c
     tmpidx = curr_bucket->elements[idx];
   }
   if (tmpidx.elem == NULL || !createbucket || tmpidx.elem->key_hash == hsh) {
+    pthread_mutex_unlock(&global_mut);
     return &(curr_bucket->elements[idx]);
   }
   unsigned int nidx, idx2;
@@ -117,6 +119,7 @@ static volatile union ht_bucket_elem *ht_elem_internal(struct ht_table *table, c
         tmpidx.elem = __atomic_load_n(&(curr_bucket->elements[idx].elem), __ATOMIC_SEQ_CST);
       }
       if (tmpidx.elem == NULL || tmpidx.elem->key_hash == hsh) {
+        pthread_mutex_unlock(&global_mut);
         return &(curr_bucket->elements[idx]);
       }
     } else {
@@ -130,6 +133,7 @@ static volatile union ht_bucket_elem *ht_elem_internal(struct ht_table *table, c
   if (itrs > 1) {
     printf("Competed %d\n", itrs);
   }
+  pthread_mutex_unlock(&global_mut);
   if (nidx == idx2) {
     return ht_elem_internal(table, key, createbucket);
   }
@@ -172,24 +176,26 @@ int ht_store(struct ht_table *table, const char *key, HT_VAL_TYPE *value) {
   int idx;
   union ht_bucket_elem new_elem;
   do {
+    // pthread_mutex_lock(&global_mut);
     do {
       beptr = ht_elem_internal(table, key, true);
       // NOTE: We're not actually doing anything with (struct ht_elem), unions of pointers just suck.
-      be.elem = __atomic_load_n((struct ht_elem**)beptr, __ATOMIC_SEQ_CST);
+      be.elem = __atomic_load_n((volatile struct ht_elem**)beptr, __ATOMIC_SEQ_CST);
     } while (ht_is_bucket(be));
+    // pthread_mutex_unlock(&global_mut);
     // Assuming elem hasn't been deleted
     if (be.elem == NULL || be.elem->key_hash == key_hash) {
-      idx = __atomic_fetch_add(&(table->allocation_idx), 1, __ATOMIC_SEQ_CST);
-      if (idx == table->allocation_incr) {
-        __atomic_store_n(&(table->allocation), malloc(sizeof(struct ht_elem)*table->allocation_incr), __ATOMIC_SEQ_CST);
-        idx = 0;
-        __atomic_store_n(&(table->allocation_idx), 1, __ATOMIC_SEQ_CST);
-      } else if (idx > table->allocation_incr) {
-        while (idx > table->allocation_idx) {
-          idx = __atomic_fetch_add(&(table->allocation_idx), 1, __ATOMIC_SEQ_CST);
-        }
-      }
-      new_elem.elem = table->allocation + (idx % table->allocation_incr);
+      // idx = __atomic_fetch_add(&(table->allocation_idx), 1, __ATOMIC_SEQ_CST);
+      // if (idx == table->allocation_incr) {
+      //   __atomic_store_n(&(table->allocation), malloc(sizeof(struct ht_elem)*table->allocation_incr), __ATOMIC_SEQ_CST);
+      //   idx = 0;
+      //   __atomic_store_n(&(table->allocation_idx), 1, __ATOMIC_SEQ_CST);
+      // } else if (idx > table->allocation_incr) {
+      //   while (idx > table->allocation_idx) {
+      //     idx = __atomic_fetch_add(&(table->allocation_idx), 1, __ATOMIC_SEQ_CST);
+      //   }
+      // }
+      new_elem.elem = malloc(sizeof(struct ht_elem));//table->allocation + (idx % table->allocation_incr);
       new_elem.elem->key = strdup(key);
       new_elem.elem->key_hash = key_hash;
       new_elem.elem->value = value;
@@ -201,7 +207,7 @@ int ht_store(struct ht_table *table, const char *key, HT_VAL_TYPE *value) {
     }
     // In my perfect world, c would let me use just * instead of *.elem, but it
     // is too dumb to know that a union of pointers is just a pointer.
-  } while (!__atomic_compare_exchange_n((struct ht_elem**)beptr, &be.elem, new_elem.elem, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
+  } while (!__atomic_compare_exchange_n((volatile struct ht_elem**)beptr, &be.elem, new_elem.elem, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
   // __atomic_clear(&(table->tlock), __ATOMIC_SEQ_CST);
   return 0;
 }

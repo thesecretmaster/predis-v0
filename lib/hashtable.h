@@ -7,6 +7,9 @@
 #define HT_VAL_TYPE int
 #endif
 
+#include <pthread.h>
+extern pthread_mutex_t global_mut;
+
 struct ht_elem {
   char *key;
   unsigned int key_hash;
