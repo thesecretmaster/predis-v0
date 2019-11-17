@@ -13,7 +13,6 @@
 #include <sys/sysinfo.h>
 #include "../lib/random_string.h"
 #define HT_VAL_TYPE char
-pthread_mutex_t global_mut;
 #include "../lib/hashtable.h"
 
 struct item {
@@ -73,18 +72,7 @@ void *tfunc(void *_shared) {
     fail_cnt = 0;
     if (__atomic_compare_exchange_n(&(queue[i]->set), &tmp1, true, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
       // Set was false (is now true)
-      // *zero = 0;
-      // printf("%p %p\n", shared->tlock, zero);
-      // while (!__atomic_compare_exchange_n(shared->tlock, zero, 1, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
-      //   sched_yield();
-      //   fail_cnt++;
-      //   *zero = 0;
-      // }
-      // pthread_mutex_lock(shared->tlock);
       rep1 = ht_store(shared->hashtable, queue[i]->key, queue[i]->value);
-      // pthread_mutex_unlock(shared->tlock);
-      // __atomic_store_n(&(shared->tlock), 0, __ATOMIC_SEQ_CST);
-      // rep = redisCommand(ctx, "set %s %s", queue[i]->key, queue[i]->value);
       rec_ctr = __atomic_fetch_add(shared->rec_ctr, 1, __ATOMIC_SEQ_CST);
       shared->records[rec_ctr].set = true;
       shared->records[rec_ctr].item = queue[i];
@@ -97,23 +85,11 @@ void *tfunc(void *_shared) {
     } else if (__atomic_compare_exchange_n(&(queue[i]->get), &tmp2, true, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
       // Get was false (is now true)
       while (__atomic_load_n(&(queue[i]->set_complete), __ATOMIC_SEQ_CST) == false) {sched_yield();}
-      // rep = redisCommand(ctx, "get %s", queue[i]->key);
-      // *zero = 0;
-      // while (!__atomic_compare_exchange_n(shared->tlock, zero, 1, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
-      //   sched_yield();
-      //   *zero = 0;
-      // }
-      // pthread_mutex_lock(shared->tlock);
       rep = ht_find(shared->hashtable, queue[i]->key);
-      // pthread_mutex_unlock(shared->tlock);
-      // __atomic_store_n(&(shared->tlock), 0, __ATOMIC_SEQ_CST);
       rec_ctr = __atomic_fetch_add(shared->rec_ctr, 1, __ATOMIC_SEQ_CST);
       shared->records[rec_ctr].get = true;
       shared->records[rec_ctr].item = queue[i];
-      /* if (rep == NULL) {
-        printf("AAAAA NULL REP\n");
-        __atomic_add_fetch(&bad_get, 1, __ATOMIC_SEQ_CST);
-      } else */ if (rep == NULL || strcmp(rep, queue[i]->value) != 0) {
+      if (rep == NULL || strcmp(rep, queue[i]->value) != 0) {
         prep = NULL;
         change_ctr = 0;
         while ((rep == NULL || strcmp(rep, queue[i]->value) != 0) && retry_count < 500) {
@@ -122,7 +98,6 @@ void *tfunc(void *_shared) {
           sched_yield();
           prep = rep;
           rep = ht_find(shared->hashtable, queue[i]->key);
-          // rep = redisCommand(ctx, "get %s", queue[i]->key);
           retry_count++;
         }
         shared->records[rec_ctr].retry_count = retry_count;
@@ -224,13 +199,15 @@ int main(int argc, char *argv[]) {
   bool duplicate;
   int key_hash_ht_len = 1000000;
   unsigned int *key_hash_ht = malloc(sizeof(unsigned int)*key_hash_ht_len);
-  for (int i = 0; i < key_hash_ht_len; i++) {
+  for (unsigned int i = 0; i < key_hash_ht_len; i++) {
     key_hash_ht[i] = 0x0;
   }
   int key_hash_length;
   int block_len = sizeof(unsigned int)*CHAR_BIT;
-  if (!quiet)
-    printf("HT SIZE: %d\n", block_len * key_hash_ht_len);
+  if (!quiet) {
+    printf("Generating random keys and values (using duplicate table size %d)\n", block_len * key_hash_ht_len);
+    printf("Key #\t | Retry Chance \%\n");
+  }
   unsigned int hsh;
   unsigned int pval;
   int dupctr;
@@ -268,14 +245,13 @@ int main(int argc, char *argv[]) {
     key_hash_ht[hsh / block_len] = key_hash_ht[hsh / block_len] | (0x1 << (hsh % block_len));
     assert((pval ^ key_hash_ht[hsh / block_len]) % 2 == 0 || (pval ^ key_hash_ht[hsh / block_len]) == 0x1);
     assert((key_hash_ht[hsh / block_len] >> (hsh % block_len)) & 0x1 == 0x1);
-    free(key_hash);
     items[i].value = random_string('v', NULL, NULL);
     items[i].set = false;
     items[i].set_complete = false;
     items[i].get = false;
     items[i].ctr = 0;
     if (i != 0 && i % 20000 == 0 && !quiet) {
-      printf("\r%d %f", i, dupavj);
+      printf("\r%d\t | %f", i, dupavj);
       fflush(stdout);
     }
   }
@@ -311,17 +287,11 @@ int main(int argc, char *argv[]) {
   bool *start = malloc(sizeof(bool));
   struct ht_table *ht = ht_init(8);
   *start = false;
-  // int *tlock = malloc(sizeof(int));
-  // printf("Tlock %p\n", tlock);
-  // *tlock = 0;
-  // pthread_mutex_t *tlock = malloc(sizeof(pthread_mutex_t));
-  pthread_mutex_init(&global_mut, NULL);
   for (int i = 0; i < thread_count; i++) {
     shared = malloc(sizeof(struct tdata));
     shared->start = start;
     shared->qlen = qidx[i];
     shared->items = queues[i];
-    // shared->tlock = tlock;
     shared->hashtable = ht;
     shared->thread_ready = thread_ready + i;
     shared->records = records;

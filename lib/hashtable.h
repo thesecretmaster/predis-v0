@@ -7,9 +7,6 @@
 #define HT_VAL_TYPE int
 #endif
 
-#include <pthread.h>
-extern pthread_mutex_t global_mut;
-
 struct ht_elem {
   char *key;
   unsigned int key_hash;
@@ -23,10 +20,10 @@ struct ht_free_list {
 };
 
 struct ht_table {
-  volatile int allocation_idx;
-  int allocation_incr;
-  volatile int tlock;
-  struct ht_elem *allocation;
+  // volatile int allocation_idx;
+  // int allocation_incr;
+  // volatile int tlock;
+  // struct ht_elem *allocation;
   volatile struct ht_free_list *free_list;
   struct ht_bucket *root_bucket;
   int bitlen;

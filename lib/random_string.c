@@ -1,5 +1,5 @@
 #include <stdlib.h>
-#include <stdio.h>
+#include <limits.h>
 #include "random_string.h"
 
 static const char charset[] = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -24,18 +24,24 @@ char *random_string(char prefix, unsigned int **hsh, int *khshlen) {
 static unsigned int *hash_randstr(unsigned int *idxs, int length, int *mutlen) {
   // (length / 4) round up + 1 (0x0)
   int len_div_4 = ((length / 4) + (length % 4 == 0 ? 0 : 1));
-  *mutlen = len_div_4;
-  unsigned int *hsh = malloc(sizeof(unsigned int)*(len_div_4));
-  // printf("Allocating hash size %d\n", len_div_4 + 1);
-  int i;
-  int incr = 0;
-  for (i = 0; i < length - 1; i++) {
-    // printf("Touching idx %d(+%d), byte %d (%X)\n", i / 16, incr, (i / 4) % 4, (idxs[i] << incr));
-    hsh[i / 16] = hsh[i / 16] | (idxs[i] << incr);
-    incr = incr == 24*5 ? 0 : incr + 8;
+  if (mutlen != NULL) {
+    *mutlen = len_div_4;
   }
-  // printf("Final idx: %d\n", (i / 16) + 1);
-  // hsh[(i / 16) + 1] = 0x0;
-  // printf("Hash: %X\n", hsh[0]);
+  unsigned int *hsh = malloc(sizeof(unsigned int)*(len_div_4 + 1));
+  for (int i = 0; i < len_div_4 + 1; i++) {
+    hsh[i] = 0x0;
+  }
+  // printf("Allocating hash size %d (str: %d)\n", len_div_4, length);
+  int incr = 0;
+  int i;
+  for (i = 0; i < length - 2; i++) {
+    // printf("Touching idx %lu(+%d), byte %lu (%X)\n", i / sizeof(unsigned int), incr, (i / sizeof(unsigned int)) % sizeof(unsigned int), (idx << incr));
+    hsh[i / sizeof(unsigned int)] = hsh[i / sizeof(unsigned int)] | (idxs[i] << incr);
+    // printf("Updated to %X\n", hsh[i / sizeof(unsigned int)]);
+    incr = incr == (CHAR_BIT*(sizeof(unsigned int) - 1)) ? 0 : incr + CHAR_BIT;
+  }
+  // printf("Final idx: %lu\n", (i / sizeof(unsigned int)) + 1);
+  hsh[(i / sizeof(unsigned int)) + 1] = 0x0;
+  // printf("%X ", hsh[0]);
   return hsh;
 }

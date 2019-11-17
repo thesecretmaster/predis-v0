@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -g -ggdb -pg -Ofast
 LIBS = -lm
 
-all: dt_hash.c cmds.c bin/predis bin/predis-server bin/parallel-test bin/hashtable-test bin/parallel-hashtable-test
+all: dt_hash.c cmds.c bin/predis bin/predis-server bin/parallel-test bin/hashtable-test bin/parallel-hashtable-test bin/random-string-test
 
 test: bin/set-clean-test bin/update-test
 
@@ -53,7 +53,10 @@ bin/parallel-test: tests/parallel-test.c lib/random_string.c
 	gcc -g -o $@ $< -lhiredis -lpthread lib/random_string.c
 
 bin/parallel-hashtable-test: tests/parallel-hashtable-test.c lib/random_string.c lib/hashtable.c
-	gcc -g -o $@ $< -lpthread lib/random_string.c lib/hashtable.c
+	gcc -g -Ofast -Wall -o $@ $< -lpthread lib/random_string.c lib/hashtable.c
+
+bin/random-string-test: tests/random-string-test.c lib/random_string.c
+	gcc -g -Wall -Wpedantic -Wextra -o $@ $< lib/random_string.c
 
 bin/hashtable-test: tests/hashtable-test.c lib/hashtable.c lib/random_string.c
 	gcc -g -o $@ $< lib/hashtable.c lib/random_string.c
