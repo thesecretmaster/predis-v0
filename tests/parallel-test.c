@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <hiredis/hiredis.h>
+#include "parallel-test-template.c"
 
 static inline void *initialize_interface() {
   redisContext *ctx = redisConnect("localhost", 8080);
@@ -25,5 +26,3 @@ static inline char *run_fetch(const char *key, void *_ctx, void *_table) {
 static inline void *initialize_data() {
   return NULL;
 }
-
-#include "parallel-test-template.c"

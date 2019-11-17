@@ -13,6 +13,11 @@
 #include <sys/sysinfo.h>
 #include "../lib/random_string.h"
 
+static inline void *initialize_interface(); // Per thread data
+static inline bool run_store(const char *key, char *value, void *per_thread_data, void *x_thread_data);
+static inline char *run_fetch(const char *key, void *per_thread_data, void *x_thread_data);
+static inline void *initialize_data(); // Global data
+
 struct item {
   char *key;
   unsigned int *key_hash;
