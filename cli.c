@@ -14,7 +14,9 @@ char *readline(char *prompt) {
   fflush(stdout);
   char *buff = NULL;
   size_t size = 0;
-  getline(&buff, &size, stdin);
+  if (getline(&buff, &size, stdin) == -1) {
+    return NULL;
+  }
   buff[strlen(buff)-1] = '\0';
   return buff;
 }
@@ -23,7 +25,7 @@ int main() {
   char* line = NULL;
   char* output;
   struct main_struct *ms = init(200);
-  struct thread_info_list *ti = register_thread(ms);
+  register_thread(ms);
   struct return_val *rval = malloc(sizeof(struct return_val));
   rval->value = NULL;
   struct arg_list *arg_list_head;

@@ -49,17 +49,17 @@ htest: bin/hashtable-test
 bin/gen_test_file: gen_test_file.c
 	$(CC) $(CFLAGS) $(LIBS) -o bin/gen_test_file gen_test_file.c
 
-bin/parallel-test: tests/parallel-test.c lib/random_string.c
-	gcc -g -o $@ $< -lhiredis -lpthread lib/random_string.c
+bin/parallel-test: tests/parallel-test.c tests/parallel-test-template.c lib/random_string.c
+	gcc -g $(CFLAGS) -o $@ $< -lhiredis -lpthread lib/random_string.c
 
-bin/parallel-hashtable-test: tests/parallel-hashtable-test.c lib/random_string.c lib/hashtable.c
-	gcc -g -Ofast -Wall -o $@ $< -lpthread lib/random_string.c lib/hashtable.c
+bin/parallel-hashtable-test: tests/parallel-hashtable-test.c tests/parallel-test-template.c lib/random_string.c lib/hashtable.c
+	gcc -g $(CFLAGS) -o $@ $< -lpthread lib/random_string.c lib/hashtable.c
 
 bin/random-string-test: tests/random-string-test.c lib/random_string.c
-	gcc -g -Wall -Wpedantic -Wextra -o $@ $< lib/random_string.c
+	gcc -g $(CFLAGS) -o $@ $< lib/random_string.c
 
 bin/hashtable-test: tests/hashtable-test.c lib/hashtable.c lib/random_string.c
-	gcc -g -o $@ $< lib/hashtable.c lib/random_string.c
+	gcc -g $(CFLAGS) -o $@ $< lib/hashtable.c lib/random_string.c
 
 clean:
 	rm -f bin/* cmds.c types/names.txt dt_hash.c command_parser_hashes.h command_parser_hashgen

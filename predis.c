@@ -188,17 +188,18 @@ int set(char* dt_name, struct main_struct* ms, char* raw_val, char *key) {
       //   reset idx
       // If idx > SIZE_MAX
       //   while (idx > SIZE_MAX) { idx = idx + 1}
-      int idx = __atomic_fetch_add(&(ms->allocation_idx), 1, __ATOMIC_SEQ_CST);
-      if (idx == ms->allocation_incr) {
-        __atomic_store_n(&(ms->allocation), malloc(sizeof(struct main_ele)*ms->allocation_incr), __ATOMIC_SEQ_CST);
-        idx = 0;
-        __atomic_store_n(&(ms->allocation_idx), 1, __ATOMIC_SEQ_CST);
-      } else if (idx > ms->allocation_incr) {
-        while (idx > ms->allocation_idx) {
-          idx = __atomic_fetch_add(&(ms->allocation_idx), 1, __ATOMIC_SEQ_CST);
-        }
-      }
-      val = ms->allocation + (idx % ms->allocation_incr);
+      // int idx = __atomic_fetch_add(&(ms->allocation_idx), 1, __ATOMIC_SEQ_CST);
+      // if (idx == ms->allocation_incr) {
+      //   __atomic_store_n(&(ms->allocation), malloc(sizeof(struct main_ele)*ms->allocation_incr), __ATOMIC_SEQ_CST);
+      //   idx = 0;
+      //   __atomic_store_n(&(ms->allocation_idx), 1, __ATOMIC_SEQ_CST);
+      // } else if (idx > ms->allocation_incr) {
+      //   while (idx > ms->allocation_idx) {
+      //     idx = __atomic_fetch_add(&(ms->allocation_idx), 1, __ATOMIC_SEQ_CST);
+      //   }
+      // }
+      // val = ms->allocation + (idx % ms->allocation_incr);
+      val = malloc(sizeof(struct main_ele));
     }
     val->pending_delete = false;
     val->type = dt;

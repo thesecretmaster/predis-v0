@@ -161,3 +161,15 @@ HT_VAL_TYPE* ht_find(struct ht_table *table, const char *key) {
 
   return element.elem == NULL ? NULL : element.elem->value;
 }
+
+void ht_free(struct ht_table *table) {
+  return;
+}
+
+struct ht_free_list *ht_clean_prepare(struct ht_table *table) {
+  return NULL;
+}
+
+int ht_clean_run(struct ht_free_list *free_list) {
+  return 0;
+}
