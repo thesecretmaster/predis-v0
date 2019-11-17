@@ -61,15 +61,12 @@ void *tfunc(void *_shared) {
   int rep1;
   int change_ctr;
   int retry_count;
-  int *zero = malloc(sizeof(int));
-  int fail_cnt;
   *(shared->thread_ready) = true;
   while (!__atomic_load_n(shared->start, __ATOMIC_SEQ_CST)) {}
   for (int i = 0; i < qlen; i++) {
     tmp1 = false;
     retry_count = 0;
     tmp2 = false;
-    fail_cnt = 0;
     if (__atomic_compare_exchange_n(&(queue[i]->set), &tmp1, true, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
       // Set was false (is now true)
       rep1 = ht_store(shared->hashtable, queue[i]->key, queue[i]->value);
@@ -128,8 +125,8 @@ static const unsigned int hash(const unsigned int *str) {
   // }
   // return hsh;
   // return *str;
-  unsigned int hash = 5381;
-  unsigned int c;
+  int hash = 5381;
+  int c;
   while ((c = *str++) != 0x0) {
     hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
   }
@@ -219,6 +216,7 @@ int main(int argc, char *argv[]) {
       key = random_string('k', &key_hash, &key_hash_length);
       duplicate = false;
       hsh = hash(key_hash) % (key_hash_ht_len * block_len);
+      free(key_hash);
       if ((key_hash_ht[hsh / block_len] >> (hsh % block_len)) & 0x1 == 0x1) {
         // printf("%d taken\n", dupctr);
         // for (int j = 0; j < i; j++) {
@@ -240,6 +238,7 @@ int main(int argc, char *argv[]) {
     dupavj = ((dupavj * i) + dupctr) / (i + 1);
     items[i].key = key;
     items[i].key_hash = key_hash;
+    free(key_hash);
     pval = key_hash_ht[hsh / block_len];
     // assert((0x0 ^ (0x1 << 0/* (hsh % block_len) */)) % 2 == 0);
     key_hash_ht[hsh / block_len] = key_hash_ht[hsh / block_len] | (0x1 << (hsh % block_len));
