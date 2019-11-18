@@ -1,3 +1,4 @@
+SHELL = bash
 CC = gcc
 CFLAGS = -Wall -g -ggdb -pg -Ofast
 
