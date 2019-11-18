@@ -31,12 +31,12 @@ static int initEle(struct main_ele *me) {
 int free_predis(struct main_struct *ms) {
   clean_queue(ms);
   ht_free(ms->hashtable);
-  for (int i = 0; i < ms->size; i++) {
-    struct main_ele *ele = ms->elements + i;
-    if (ele->type != NULL) {
-      ele->type->free_ele(ele->ptr);
-    }
-  }
+  // for (int i = 0; i < ms->size; i++) {
+  //   struct main_ele *ele = ms->elements + i;
+  //   if (ele->type != NULL) {
+  //     ele->type->free_ele(ele->ptr);
+  //   }
+  // }
   struct thread_info_list *tiele = ms->thread_list;
   struct thread_info_list *prev;
   while (tiele != NULL) {
@@ -51,7 +51,7 @@ int free_predis(struct main_struct *ms) {
     fl_ele = fl_ele->next;
     free(prev_fl);
   }
-  free(ms->elements);
+  // free(ms->elements);
   free(ms);
   return 0;
 }
@@ -85,27 +85,27 @@ struct main_struct* init(int size) {
   // data_types[1] = data_type_string;
   struct main_struct *ms = malloc(sizeof(struct main_struct));
   ms->size = size;
-  ms->hashtable = ht_init(size);
+  ms->hashtable = ht_init(size, &initEle);
   ms->deletion_queue = NULL;
   ms->free_list = NULL;
   ms->thread_list = NULL;
   ms->counter = 0;
-  ms->elements = malloc((ms->size)*sizeof(struct main_ele));
+  // ms->elements = malloc((ms->size)*sizeof(struct main_ele));
   ms->thread_list_write_locked = false;
   ms->thread_list_traversing_count = 0;
-  ms->allocation_incr = HT_ALLOC_INCR;
-  ms->allocation_idx = 0;
-  ms->allocation = malloc(sizeof(struct main_ele)*ms->allocation_incr);
-  struct main_ele *me_ptr = ms->elements;
-  int rval;
-  void* ub = ms->elements + ms->size;
-  while ((void*)me_ptr < ub) {
-    rval = initEle(me_ptr);
-    if (rval != 0) {
-      exit(rval);
-    }
-    me_ptr++;
-  }
+  // ms->allocation_incr = HT_ALLOC_INCR;
+  // ms->allocation_idx = 0;
+  // ms->allocation = malloc(sizeof(struct main_ele)*ms->allocation_incr);
+  // struct main_ele *me_ptr = ms->elements;
+  // int rval;
+  // void* ub = ms->elements + ms->size;
+  // while ((void*)me_ptr < ub) {
+  //   rval = initEle(me_ptr);
+  //   if (rval != 0) {
+  //     exit(rval);
+  //   }
+  //   me_ptr++;
+  // }
   return ms;
 }
 

@@ -8,8 +8,8 @@
 struct ht_elem {
   char *key;
   unsigned int key_hash;
-  HT_VAL_TYPE* value;
   struct ht_elem *next;
+  HT_VAL_TYPE value;
 };
 
 struct ht_free_list {
@@ -63,14 +63,16 @@ const unsigned int ht_hash(const char *str) {
   return hash;
 }
 
-struct ht_table *ht_init(int foo) {
+struct ht_table *ht_init(int bits, int (*init_ele)(HT_VAL_TYPE *)) {
   struct ht_table *table = malloc(sizeof(struct ht_table));
   table->bitlen = 8;
   table->free_list = NULL;
   table->root_bucket = ht_bucket_init(table);
+  table->initialize_element = init_ele;
   return table;
 }
 
+#include <stdio.h>
 int ht_store(struct ht_table *table, const char *key, HT_VAL_TYPE *value) {
   // We use the key hash a lot, let's just do it once
   unsigned int key_hash = ht_hash(key);
@@ -79,8 +81,8 @@ int ht_store(struct ht_table *table, const char *key, HT_VAL_TYPE *value) {
   struct ht_elem *new_element = malloc(sizeof(struct ht_elem));
   new_element->key_hash = key_hash;
   new_element->key = strdup(key);
-  new_element->value = value;
   new_element->next = NULL;
+  memcpy(&(new_element->value), value, sizeof(HT_VAL_TYPE));
 
   // Walk down the tree assuming that buckets aren't modified after our first fetch
   int depth = 0;
@@ -172,7 +174,7 @@ HT_VAL_TYPE* ht_find(struct ht_table *table, const char *key) {
     traverse_times++;
   }
 
-  return element.elem == NULL ? NULL : element.elem->value;
+  return element.elem == NULL ? NULL : &(element.elem->value);
 }
 
 void ht_free(struct ht_table *table) {

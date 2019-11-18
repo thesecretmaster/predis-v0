@@ -6,6 +6,11 @@
 #define HT_VAL_TYPE int
 #include "../lib/hashtable.h"
 
+int initEle(int *v) {
+  *v = 0;
+  return 0;
+}
+
 int main(int argc, char *argv[]) {
   int c;
   int ht_count = 10000;
@@ -19,7 +24,7 @@ int main(int argc, char *argv[]) {
      }
 
   printf("Running test with %d entries\n", ht_count);
-  struct ht_table *table = ht_init(8);
+  struct ht_table *table = ht_init(8, &initEle);
   char *s;
   int *j;
   int f;

@@ -12,3 +12,5 @@ dt_hash.c
 types/names.txt
 command_parser_hashes.h
 command_parser_hashgen
+lib/hashtable.*.c
+lib/hashtable.*.h
