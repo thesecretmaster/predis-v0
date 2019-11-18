@@ -7,8 +7,8 @@
 #include <netdb.h>
 #include <pthread.h>
 #include <signal.h>
-#include "command_parser.h"
-#include "predis.h"
+#include "../command_parser.h"
+#include "../predis.h"
 
 void *connhandler(void*);
 

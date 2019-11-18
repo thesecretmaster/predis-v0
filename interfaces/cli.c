@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include "predis.h"
-#include "command_parser.h"
+#include "../predis.h"
+#include "../command_parser.h"
 
 struct arg_list {
   struct arg_list *next;

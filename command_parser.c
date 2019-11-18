@@ -3,8 +3,8 @@
 #include <string.h>
 #include <stdbool.h>
 #include "command_parser.h"
-#include "cmds.c"
-#include "command_parser_hashes.h"
+#include "tools/cmds.c"
+#include "tools/command_parser_hashes.h"
 
 static const char unrecognized_command[] = "Unrecognized command: %s";
 static const char command_done[] = "DONE: %d";

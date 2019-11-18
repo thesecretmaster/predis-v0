@@ -2,19 +2,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <time.h>
-
-const char charset[] = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
-char *random_string(char prefix) {
-  int length = (rand() % 40) + 5;
-  char *str = malloc(sizeof(char)*length + 1);
-  str[length] = '\0';
-  str[0] = prefix;
-  for (int i = 1; i < length; i++) {
-    str[i] = charset[rand() % (sizeof(charset) - 1)];
-  }
-  return str;
-}
+#include <string.h>
+#include "../lib/random_string.h"
 
 struct item {
   char *key;
@@ -25,19 +14,27 @@ struct item {
 
 #define ITEM_COUNT 100000
 
-int main() {
+const char suffix[] = ".expout";
+const char default_filename[] = "tmp/testfile";
+
+int main(int argc, char *argv[]) {
   struct item items[ITEM_COUNT];
   for (int i = 0; i < ITEM_COUNT; i++) {
-    items[i].key = random_string('k');
-    items[i].value = random_string('v');
+    items[i].key = random_string('k', NULL, NULL);
+    items[i].value = random_string('v', NULL, NULL);
     items[i].set = false;
     items[i].get = false;
   }
   int count = 0;
   struct item *item;
   int idx;
-  FILE *f = fopen("testfile", "w");
-  FILE *f1 = fopen("testfile.expout", "w");
+  const char *filename = argc <= 1 ? default_filename : argv[1];
+  char *filename_final = malloc(sizeof(char) * (strlen(filename) + sizeof(suffix)));
+  strcpy(filename_final, filename);
+  strcat(filename_final, ".expout");
+  printf("%s\n%s\n", filename, filename_final);
+  FILE *f = fopen(filename, "w");
+  FILE *f1 = fopen(filename_final, "w");
   if (f == NULL || f1 == NULL) { return -1; }
   while (count < ITEM_COUNT*2) {
     idx = rand() % ITEM_COUNT;

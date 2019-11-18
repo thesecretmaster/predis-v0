@@ -1,27 +1,23 @@
 CC = gcc
 CFLAGS = -Wall -g -ggdb -pg -Ofast
-LIBS = -lm
 
-all: dt_hash.c cmds.c bin/predis-server bin/predis bin/parallel-test bin/hashtable-test bin/parallel-hashtable-test bin/random-string-test
+all: bin/predis-server bin/predis bin/parallel-test bin/hashtable-test bin/parallel-hashtable-test bin/random-string-test
 
 test: bin/set-clean-test bin/update-test
 
-types/names.txt: type_list_gen.sh
-	./type_list_gen.sh > types/names.txt
+types/names.txt: tools/type_list_gen.sh
+	$< > $@
 
 dt_hash.c: types/names.txt
-	gperf --includes --readonly-tables --hash-function-name=dt_hash --lookup-function-name=dt_valid types/names.txt > dt_hash.c
+	gperf --includes --readonly-tables --hash-function-name=dt_hash --lookup-function-name=dt_valid $< > $@
 
-cmds.c: cmds.txt
-	gperf --readonly-tables cmds.txt > cmds.c
+tools/cmds.c: cmds.txt
+	gperf --readonly-tables $< > $@
 
-command_parser_hashgen: cmds.c command_parser_hashgen.c
-	gcc $(CFLAGS) -o $@ command_parser_hashgen.c
+tools/command_parser_hashes.h: tools/cmds.c tools/command_parser_hashgen.c
+	gcc $(CFLAGS) -o tmp/command_parser_hashgen tools/command_parser_hashgen.c && tmp/command_parser_hashgen > tools/command_parser_hashes.h
 
-command_parser_hashes.h: command_parser_hashgen
-	./command_parser_hashgen > command_parser_hashes.h
-
-command_parser.c: command_parser_hashes.h
+command_parser.c: tools/command_parser_hashes.h tools/cmds.c
 
 lib/hashtable.%.h: lib/hashtable.h
 	gcc -DHT_VAL_TYPE="$*" -E "$<" -o "$@"
@@ -37,16 +33,33 @@ PREDIS_PREREQS = predis.c types/*.c lib/hashtable.struct\ main_ele.c lib/hashtab
 PREDIS_DEPS = predis.c types/*.c "lib/hashtable.struct main_ele.c"
 
 bin/set-clean-test: tests/set-clean-test.c $(PREDIS_PREREQS)
-	$(CC) $(CFLAGS) $(LIBS) -pthread -o $@ tests/set-clean-test.c $(PREDIS_DEPS)
+	$(CC) $(CFLAGS) -pthread -o $@ $< $(PREDIS_DEPS)
 
 bin/update-test: tests/update-test.c $(PREDIS_PREREQS)
-	$(CC) $(CFLAGS) $(LIBS) -pthread -o $@ tests/update-test.c $(PREDIS_DEPS)
+	$(CC) $(CFLAGS) -pthread -o $@ $< $(PREDIS_DEPS)
 
-bin/predis: cli.c command_parser.c $(PREDIS_PREREQS)
-	$(CC) $(CFLAGS) $(LIBS) -o bin/predis cli.c $(PREDIS_DEPS) command_parser.c -ledit
+bin/predis: interfaces/cli.c command_parser.c $(PREDIS_PREREQS)
+	$(CC) $(CFLAGS) -o bin/predis $< command_parser.c $(PREDIS_DEPS) -ledit
 
-bin/predis-server: server.c cmds.c command_parser.c $(PREDIS_PREREQS)
-	$(CC) $(CFLAGS) $(LIBS) -o $@ $< -pthread $(PREDIS_DEPS) command_parser.c
+bin/predis-server: interfaces/server.c command_parser.c $(PREDIS_PREREQS)
+	$(CC) $(CFLAGS) -o $@ $< command_parser.c $(PREDIS_DEPS) -pthread
+
+bin/gen_test_file: tools/gen_test_file.c lib/random_string.c
+	$(CC) $(CFLAGS) -o $@ $^
+
+bin/parallel-test: tests/parallel-test.c tests/parallel-test-template.c lib/random_string.c
+	$(CC) -g $(CFLAGS) -o $@ $< -lhiredis -lpthread lib/random_string.c
+
+bin/parallel-hashtable-test: tests/parallel-hashtable-test.c tests/parallel-test-template.c lib/random_string.c lib/hashtable.char\ *.c
+	$(CC) -g $(CFLAGS) -o $@ $< -pthread lib/random_string.c lib/hashtable.char\ \*.c
+
+bin/random-string-test: tests/random-string-test.c lib/random_string.c
+	$(CC) -g $(CFLAGS) -o $@ $^
+
+bin/hashtable-test: tests/hashtable-test.c lib/hashtable.int.c lib/random_string.c
+	$(CC) -g $(CFLAGS) -o $@ $^
+
+.PHONY: clean htest ptest serve clean_hard
 
 serve: bin/predis-server
 	$<
@@ -57,20 +70,8 @@ ptest: bin/parallel-test
 htest: bin/hashtable-test
 	$<
 
-bin/gen_test_file: gen_test_file.c
-	$(CC) $(CFLAGS) $(LIBS) -o bin/gen_test_file gen_test_file.c
-
-bin/parallel-test: tests/parallel-test.c tests/parallel-test-template.c lib/random_string.c
-	gcc -g $(CFLAGS) -o $@ $< -lhiredis -lpthread lib/random_string.c
-
-bin/parallel-hashtable-test: tests/parallel-hashtable-test.c tests/parallel-test-template.c lib/random_string.c lib/hashtable.char\ *.c
-	gcc -g $(CFLAGS) -o $@ $< -lpthread lib/random_string.c lib/hashtable.char\ \*.c
-
-bin/random-string-test: tests/random-string-test.c lib/random_string.c
-	gcc -g $(CFLAGS) -o $@ $< lib/random_string.c
-
-bin/hashtable-test: tests/hashtable-test.c lib/hashtable.int.c lib/random_string.c
-	gcc -g $(CFLAGS) -o $@ $< lib/hashtable.int.c lib/random_string.c
-
 clean:
-	rm -f bin/* cmds.c types/names.txt dt_hash.c command_parser_hashes.h command_parser_hashgen lib/hashtable.*.{c,h}
+	rm -f bin/* cmds.c types/names.txt dt_hash.c command_parser_hashes.h tmp/command_parser_hashgen lib/hashtable.*.{c,h} tools/cmds.c tools/command_parser_hashes.h
+
+clean_hard: clean
+	rm -f perf.* gmon.out tmp/* vgcore.*
