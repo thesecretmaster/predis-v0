@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <limits.h>
 #include <stdbool.h>
 
 struct ht_elem {
@@ -43,6 +44,8 @@ struct ht_bucket *ht_get_bucket(union ht_bucket_elem be) {
   return (struct ht_bucket*)((uintptr_t)be.bucket & (~0x1));
 }
 
+static void ht_free_elem(struct ht_elem*);
+
 static struct ht_bucket *ht_bucket_init(struct ht_table *table) {
   struct ht_bucket *bucket = malloc(sizeof(struct ht_bucket));
   int element_count = (0x1 << table->bitlen);
@@ -63,6 +66,22 @@ const unsigned int ht_hash(const char *str) {
   return hash;
 }
 
+// https://stackoverflow.com/a/7666799/4948732
+const unsigned int ht_hash_inner(const char *key)
+{
+    unsigned int hash, i;
+    for(hash = i = 0; key[i] != '\0'; ++i)
+    {
+        hash += key[i];
+        hash += (hash << 10);
+        hash ^= (hash >> 6);
+    }
+    hash += (hash << 3);
+    hash ^= (hash >> 11);
+    hash += (hash << 15);
+    return hash;
+}
+
 struct ht_table *ht_init(int bits, int (*init_ele)(HT_VAL_TYPE *)) {
   struct ht_table *table = malloc(sizeof(struct ht_table));
   table->bitlen = 8;
@@ -72,10 +91,10 @@ struct ht_table *ht_init(int bits, int (*init_ele)(HT_VAL_TYPE *)) {
   return table;
 }
 
-#include <stdio.h>
 int ht_store(struct ht_table *table, const char *key, HT_VAL_TYPE *value) {
   // We use the key hash a lot, let's just do it once
   unsigned int key_hash = ht_hash(key);
+  unsigned int key_hash_alternate = ht_hash_inner(key);
 
   // Initialize new element
   struct ht_elem *new_element = malloc(sizeof(struct ht_elem));
@@ -96,6 +115,9 @@ int ht_store(struct ht_table *table, const char *key, HT_VAL_TYPE *value) {
     index = (key_hash >> (table->bitlen * depth)) & index_mask;
     element = bucket->elements[index];
   }
+  if (depth * table->bitlen == sizeof(unsigned int)*CHAR_BIT) {
+    new_element->key_hash = key_hash_alternate;
+  }
 
   // Now our unchanged-bucket assumption is challenged, we'll pick up a
   // read-copy-update method where we do all of our work on the value of
@@ -111,6 +133,7 @@ int ht_store(struct ht_table *table, const char *key, HT_VAL_TYPE *value) {
     element = bucket->elements[index];
     if (ht_is_bucket(element)) {
       // Our assumption has failed, let's try again from scratch.
+      ht_free_elem(new_element);
       return ht_store(table, key, value);
     } else if (element.elem != NULL && element.elem->key_hash != key_hash) {
       // Allocate a new bucket.
@@ -118,6 +141,9 @@ int ht_store(struct ht_table *table, const char *key, HT_VAL_TYPE *value) {
       old_element_index = (element.elem->key_hash >> (table->bitlen * (depth + 1))) & index_mask;
       new_element_index = (key_hash               >> (table->bitlen * (depth + 1))) & index_mask;
       new_bucket = ht_bucket_init(table);
+      if ((depth + 1) * table->bitlen == sizeof(unsigned int)*CHAR_BIT) {
+        new_element->key_hash = key_hash_alternate;
+      }
       // The order of the inserts is important in case old_element_index == new_element_index
       new_bucket->elements[new_element_index].elem = new_element;
       new_bucket->elements[old_element_index] = element;
@@ -136,6 +162,7 @@ int ht_store(struct ht_table *table, const char *key, HT_VAL_TYPE *value) {
 
 HT_VAL_TYPE* ht_find(struct ht_table *table, const char *key) {
   unsigned int key_hash = ht_hash(key);
+  unsigned int key_hash_alternate = ht_hash_inner(key);
 
   // Walk down the tree assuming that buckets aren't modified after our first fetch
   int depth = 0;
@@ -168,6 +195,10 @@ HT_VAL_TYPE* ht_find(struct ht_table *table, const char *key) {
   // }
   // element = felement;
 
+  if (depth * table->bitlen == sizeof(unsigned int) * CHAR_BIT) {
+    key_hash = key_hash_alternate;
+  }
+
   int traverse_times = 0;
   while (element.elem != NULL && !(key_hash == element.elem->key_hash && strcmp(element.elem->key, key) == 0)) {
     element.elem = element.elem->next;
@@ -177,7 +208,27 @@ HT_VAL_TYPE* ht_find(struct ht_table *table, const char *key) {
   return element.elem == NULL ? NULL : &(element.elem->value);
 }
 
+static void ht_free_elem(struct ht_elem *elem) {
+  free(elem->key);
+  free(elem);
+}
+
+static void ht_free_bucket(struct ht_bucket *bucket, int bucket_len) {
+  union ht_bucket_elem element;
+  for (int i = 0; i < bucket_len; i++) {
+    element = bucket->elements[i];
+    if (ht_is_bucket(element)) {
+      ht_free_bucket(ht_get_bucket(element), bucket_len);
+    } else if (element.elem != NULL) {
+      ht_free_elem(element.elem);
+    }
+  }
+  free(bucket);
+}
+
 void ht_free(struct ht_table *table) {
+  ht_free_bucket(table->root_bucket, 0x1 << table->bitlen);
+  free(table);
   return;
 }
 

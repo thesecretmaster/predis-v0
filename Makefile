@@ -25,7 +25,7 @@ lib/hashtable.%.h: lib/hashtable.h
 
 lib/hashtable.%.c: lib/hashtable.c
 	if [ -a "hashtable-shared/$*.h" ]; then \
-		(echo "#include \"hashtable-shared/$*.h\"" && cat lib/hashtable.c) > "tmp/hashtable.$*.c" && gcc -I. -Ilib/ -DHT_VAL_TYPE="$*" -E "tmp/hashtable.$*.c" -o "$@"; \
+		(echo "#include \"hashtable-shared/$*.h\"" && echo "#line 1 \"$(abspath $<)\"" && cat lib/hashtable.c) > "tmp/hashtable.$*.c" && gcc -I. -Ilib/ -DHT_VAL_TYPE="$*" -E "tmp/hashtable.$*.c" -o "$@"; \
 	else \
 		gcc -DHT_VAL_TYPE="$*" -E lib/hashtable.c -o "$@"; \
 	fi
