@@ -134,7 +134,14 @@ void deregister_thread(struct main_struct *ms, struct thread_info_list *ti) {
   if (ti  == tiptr) {
     ms->thread_list = ti->next;
   } else {
-    while (tiptr->next != ti) { tiptr = tiptr->next; }
+    while (tiptr->next != ti) {
+      tiptr = tiptr->next;
+      // This should never happen, but it did so...?
+      if (tiptr == NULL) {
+        __atomic_store_n(&(ms->thread_list_write_locked), false, __ATOMIC_SEQ_CST);
+        return;
+      }
+    }
     // Delete ti
     tiptr->next = ti->next;
   }
@@ -145,6 +152,27 @@ void deregister_thread(struct main_struct *ms, struct thread_info_list *ti) {
   // Clean up
   free(ti);
   return;
+}
+
+static const struct updater *get_updater(const struct data_type *dt, char *name){
+  for (int i = 0; i < dt->updater_length; i++)
+    if (strcmp(dt->updaters[i].name, name) == 0)
+      return dt->updaters + i;
+  return NULL;
+}
+
+static const struct setter *get_setter(const struct data_type *dt, char *name){
+  for (int i = 0; i < dt->setter_length; i++)
+    if (strcmp(dt->setters[i].name, name) == 0)
+      return dt->setters + i;
+  return NULL;
+}
+
+static const struct getter *get_getter(const struct data_type *dt, char *name){
+  for (int i = 0; i < dt->getter_length; i++)
+    if (strcmp(dt->getters[i].name, name) == 0)
+      return dt->getters + i;
+  return NULL;
 }
 
 // Errors:
@@ -167,7 +195,7 @@ static const struct data_type* getDataType(const struct data_type** dt_list, int
 }
 
 // Errors:
-int set(char* dt_name, struct main_struct* ms, char* raw_val, char *key) {
+int set(char* dt_name, struct main_struct* ms, char* setter_name, char* key, char **args) {
   int dt_max = DATA_TYPE_COUNT;
   const struct data_type** dt_list = data_types;
   const struct data_type *dt = getDataType(dt_list, dt_max, dt_name);
@@ -203,12 +231,20 @@ int set(char* dt_name, struct main_struct* ms, char* raw_val, char *key) {
     }
     val->pending_delete = false;
     val->type = dt;
-    dt->setter(&(val->ptr), raw_val);
-    ht_store(ms->hashtable, key, val);
-    if (ht_find(ms->hashtable, key) == NULL) {
-      printf("Uhhhhhh %s\n", key);
+    const struct setter *setter = get_setter(dt, setter_name);
+    if (setter == NULL) {
+      // Cleanup val and stuff
+      return -2;
     }
-    return 0;
+    int errors = 0;
+    val->ptr = setter->func(&errors, args);
+    if (errors != 0) {
+      // Cleanup val and stuff
+      return errors;
+    } else {
+      ht_store(ms->hashtable, key, val);
+      return 0;
+    }
   }
 }
 
@@ -218,7 +254,7 @@ int set(char* dt_name, struct main_struct* ms, char* raw_val, char *key) {
 // -3: Data types did not match
 // -4: Index out of bounds
 // -5: Element is not set
-int get(char* dt_name, struct main_struct* ms, struct return_val* rval, char *key) {
+int get(char* dt_name, struct main_struct* ms, char *getter_name, struct return_val* rval, char *key, char **args) {
   // if (idx < 0 || idx > ms->size) { return -4; }
   __atomic_store_n(safe, false, __ATOMIC_SEQ_CST);
   // struct main_ele *ele = ms->elements + idx;
@@ -233,11 +269,12 @@ int get(char* dt_name, struct main_struct* ms, struct return_val* rval, char *ke
     __atomic_store_n(safe, true, __ATOMIC_SEQ_CST);
     return -1;
   } else {
-    if (strcmp(ele->type->name, dt_name) != 0) {
+    const struct getter *getter = get_getter(dt, getter_name);
+    if (getter == NULL) {
+      __atomic_store_n(safe, true, __ATOMIC_SEQ_CST);
       return -3;
     }
-    void *val = ele->ptr;
-    int errors = dt->getter(val, rval);
+    int errors = getter->func(rval, ele->ptr, args);
     __atomic_store_n(safe, true, __ATOMIC_SEQ_CST);
     return errors;
   }
@@ -246,10 +283,9 @@ int get(char* dt_name, struct main_struct* ms, struct return_val* rval, char *ke
 // Errors:
 // -1: Invalid data type
 // -2: Pending deletion
-// -3: Wrong data type
 // -4: Invalid updater name
 // -5: Invalid key
-int update(char* dt_name, char* updater_name, struct main_struct* ms, char* raw_new_val, char *key) {
+int update(char* dt_name, char* updater_name, struct main_struct* ms, char* key, char **args) {
   __atomic_store_n(safe, false, __ATOMIC_SEQ_CST);
   // struct main_ele *ele = ms->elements + idx;
   struct main_ele *ele = ht_find(ms->hashtable, key);
@@ -261,27 +297,20 @@ int update(char* dt_name, char* updater_name, struct main_struct* ms, char* raw_
     __atomic_store_n(safe, true, __ATOMIC_SEQ_CST);
     return -1;
   } else {
-    if (strcmp(ele->type->name, dt_name) != 0) { return -3; }
     if (ele->pending_delete == true) { return -2; }
-    const struct updater *updater = NULL;
-    for (int i = 0; i < dt->updater_length; i++) {
-      if (strcmp(dt->updaters[i].name, updater_name) == 0) {
-        updater = dt->updaters + i;
-        break;
-      }
-    }
+    const struct updater *updater = get_updater(dt, updater_name);
     if (updater == NULL) { return -4; }
     int errors;
     if (updater->safe) {
-      errors = (updater->func)(&(ele->ptr), raw_new_val);
+      errors = (updater->func)(&(ele->ptr), args);
     } else {
       void *val = ele->ptr;
       void *clone_val = dt->clone(val);
-      errors = (updater->func)(&clone_val, raw_new_val);
+      errors = (updater->func)(&clone_val, args);
       while (!__sync_bool_compare_and_swap(&(ele->ptr), val, clone_val)) {
         val = ele->ptr;
         clone_val = dt->clone(val);
-        errors = (updater->func)(&clone_val, raw_new_val);
+        errors = (updater->func)(&clone_val, args);
       }
     }
     __atomic_store_n(safe, true, __ATOMIC_SEQ_CST);

@@ -3,18 +3,34 @@
 #include "template.h"
 #include "int.h"
 
-static int update(void**, char*);
+static int update(void**, char**);
 const static struct updater overwriter = {
   .name = "overwrite",
   .func = &update,
   .safe = false
 };
 
+static void *set(int*, char**);
+const static struct setter store = {
+  .name = "store",
+  .func = &set,
+  .safe = false
+};
+
+static int get(struct return_val*, void*, char**);
+const static struct getter fetch = {
+  .name = "fetch",
+  .func = &get,
+  .safe = false
+};
+
 const struct data_type data_type_int = {
   .name = "int",
-  .getter = &get,
+  .getter_length = 1,
+  .getters = &fetch,
   .free_ele = &free_ele,
-  .setter = &set,
+  .setter_length = 1,
+  .setters = &store,
   .updater_length = 1,
   .updaters = &overwriter,
   .clone = &clone
@@ -35,7 +51,7 @@ static void *clone(void *oldval) {
 // Return value: 2nd argument (rval)
 // Errors:
 // 1: rval->val need to be freed
-static int get(void* val, struct return_val *rval) {
+static int get(struct return_val *rval, void* val, char **args) {
   rval->value = malloc(sizeof(char)*20);
   int ival = __atomic_load_n((int*)val, __ATOMIC_SEQ_CST);
   snprintf(rval->value, 20, "%d", ival);
@@ -46,16 +62,20 @@ static int get(void* val, struct return_val *rval) {
 // Notes:
 //   Setters are responsible for taking a string (command), parsing
 // it and then settings it. There is no seperate parser stage.
-static int set(void** val, char *raw_set_val) {
+static void *set(int *errors, char **args) {
+  char *raw_set_val = args[0];
   int set_val = strtol(raw_set_val, NULL, 10);
-  (*val) = malloc(sizeof(int));
-  *((int*)*val) = set_val;
-  return 0;
+  int *val = malloc(sizeof(int));
+  *val = set_val;
+  return val;
 }
 
-static int update(void** val, char *raw_update_val) {
+// Build a helper which auto returns argument errors
+// Also we have no arglength?
+static int update(void** _val, char **args) {
+  int *val = *_val;
+  char *raw_update_val = args[0];
   int update_val = strtol(raw_update_val, NULL, 10);
-  (*val) = malloc(sizeof(int));
-  *((int*)*val) = update_val;
+  __atomic_store_n(val, update_val, __ATOMIC_SEQ_CST);
   return 0;
 }

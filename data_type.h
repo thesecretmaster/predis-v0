@@ -9,18 +9,32 @@ struct return_val {
 
 struct data_type {
   char *name;
-  int (*setter)(void**, char*);
   void* (*clone)(void*);
   int (*free_ele)(void*);
   int updater_length;
+  int getter_length;
+  int setter_length;
   const struct updater *updaters;
-  int (*getter)(void*, struct return_val*);
+  const struct setter *setters;
+  const struct getter *getters;
 };
 
 struct updater {
   char *name;
   bool safe;
-  int (*func)(void**, char*);
+  int (*func)(void **value /* They can change things, but they can't realloc the whole thing */, char **args);
+};
+
+struct setter {
+  char *name;
+  bool safe;
+  void* (*func)(int *errors /* default 0 */, char **args); // Returns the allocated element
+};
+
+struct getter {
+  char *name;
+  bool safe;
+  int (*func)(struct return_val *rval, void *value, char **args);
 };
 
 #endif // DATA_TYPE_H
