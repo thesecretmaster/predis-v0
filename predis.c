@@ -84,28 +84,15 @@ struct main_struct* init(int size) {
   // data_types[0] = data_type_int;
   // data_types[1] = data_type_string;
   struct main_struct *ms = malloc(sizeof(struct main_struct));
-  ms->size = size;
   ms->hashtable = ht_init(size, &initEle);
   ms->deletion_queue = NULL;
   ms->free_list = NULL;
   ms->thread_list = NULL;
-  ms->counter = 0;
-  // ms->elements = malloc((ms->size)*sizeof(struct main_ele));
   ms->thread_list_write_locked = false;
   ms->thread_list_traversing_count = 0;
-  // ms->allocation_incr = HT_ALLOC_INCR;
-  // ms->allocation_idx = 0;
-  // ms->allocation = malloc(sizeof(struct main_ele)*ms->allocation_incr);
-  // struct main_ele *me_ptr = ms->elements;
-  // int rval;
-  // void* ub = ms->elements + ms->size;
-  // while ((void*)me_ptr < ub) {
-  //   rval = initEle(me_ptr);
-  //   if (rval != 0) {
-  //     exit(rval);
-  //   }
-  //   me_ptr++;
-  // }
+  ms->allocation_incr = HT_ALLOC_INCR;
+  ms->allocation_idx = 0;
+  ms->allocation = malloc(sizeof(struct main_ele)*ms->allocation_incr);
   return ms;
 }
 
@@ -122,7 +109,7 @@ struct thread_info_list* register_thread(struct main_struct *ms) {
 
 // In theory this could be simpler. See https://cs.stackexchange.com/questions/112609/parallel-deletion-and-traversal-in-a-lock-free-linked-list
 void deregister_thread(struct main_struct *ms, struct thread_info_list *ti) {
-  int falsevar = false;
+  bool falsevar = false;
   // Grab the write lock
   while (!__atomic_compare_exchange_n(&(ms->thread_list_write_locked), &falsevar, true, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {}
   // Wait until all the traversers leave
@@ -202,7 +189,7 @@ int set(char* dt_name, struct main_struct* ms, char* setter_name, char* key, cha
   if (dt == NULL) {
     return -1;
   } else {
-    struct main_ele *val;
+    volatile struct main_ele *val;
     struct element_queue *fl_head;
     // Concept: Keep a fl_length field, and if it's longer than liek 5, try popping off it
     do {
@@ -216,18 +203,17 @@ int set(char* dt_name, struct main_struct* ms, char* setter_name, char* key, cha
       //   reset idx
       // If idx > SIZE_MAX
       //   while (idx > SIZE_MAX) { idx = idx + 1}
-      // int idx = __atomic_fetch_add(&(ms->allocation_idx), 1, __ATOMIC_SEQ_CST);
-      // if (idx == ms->allocation_incr) {
-      //   __atomic_store_n(&(ms->allocation), malloc(sizeof(struct main_ele)*ms->allocation_incr), __ATOMIC_SEQ_CST);
-      //   idx = 0;
-      //   __atomic_store_n(&(ms->allocation_idx), 1, __ATOMIC_SEQ_CST);
-      // } else if (idx > ms->allocation_incr) {
-      //   while (idx > ms->allocation_idx) {
-      //     idx = __atomic_fetch_add(&(ms->allocation_idx), 1, __ATOMIC_SEQ_CST);
-      //   }
-      // }
-      // val = ms->allocation + (idx % ms->allocation_incr);
-      val = malloc(sizeof(struct main_ele));
+      int idx = __atomic_fetch_add(&(ms->allocation_idx), 1, __ATOMIC_SEQ_CST);
+      if (idx == ms->allocation_incr) {
+        __atomic_store_n(&(ms->allocation), malloc(sizeof(struct main_ele)*ms->allocation_incr), __ATOMIC_SEQ_CST);
+        idx = 0;
+        __atomic_store_n(&(ms->allocation_idx), 1, __ATOMIC_SEQ_CST);
+      } else if (idx > ms->allocation_incr) {
+        while (idx > ms->allocation_idx) {
+          idx = __atomic_fetch_add(&(ms->allocation_idx), 1, __ATOMIC_SEQ_CST);
+        }
+      }
+      val = ms->allocation + (idx % ms->allocation_incr);
     }
     val->pending_delete = false;
     val->type = dt;
@@ -242,7 +228,7 @@ int set(char* dt_name, struct main_struct* ms, char* setter_name, char* key, cha
       // Cleanup val and stuff
       return errors;
     } else {
-      ht_store(ms->hashtable, key, val);
+      ht_store(ms->hashtable, key, (struct main_ele*)val);
       return 0;
     }
   }

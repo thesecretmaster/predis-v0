@@ -30,16 +30,20 @@ union ht_bucket_elem {
   struct ht_elem* elem;
   struct ht_bucket* bucket;
 };
-bool ht_is_bucket(union ht_bucket_elem e) {
+static inline bool ht_is_bucket(union ht_bucket_elem e) {
   return ((uintptr_t)e.bucket & 0x1) == 0x1;
 }
-union ht_bucket_elem ht_set_bucket(struct ht_bucket* bucket) {
-  return (union ht_bucket_elem)(struct ht_bucket*)((uintptr_t)bucket | 0x1);
+static inline union ht_bucket_elem ht_set_bucket(struct ht_bucket* bucket) {
+  union ht_bucket_elem tmp;
+  tmp.bucket = (struct ht_bucket*)((uintptr_t)bucket | 0x1);
+  return tmp;
 }
-union ht_bucket_elem ht_set_element(struct ht_elem* elem) {
-  return (union ht_bucket_elem)(struct ht_elem*)((uintptr_t)elem & (~0x1));
+static inline union ht_bucket_elem ht_set_element(struct ht_elem* elem) {
+  union ht_bucket_elem tmp;
+  tmp.elem = (struct ht_elem*)((uintptr_t)elem & (~0x1));
+  return tmp;
 }
-struct ht_bucket *ht_get_bucket(union ht_bucket_elem be) {
+static inline struct ht_bucket *ht_get_bucket(union ht_bucket_elem be) {
   assert(ht_is_bucket(be));
   return (struct ht_bucket*)((uintptr_t)be.bucket & (~0x1));
 }

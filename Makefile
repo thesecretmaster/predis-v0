@@ -1,6 +1,6 @@
 SHELL = bash
-CC = gcc
-CFLAGS = -Wall -g -ggdb -pg -Ofast
+CC = clang # gcc
+CFLAGS = -Wall -g -ggdb -pg -Ofast -march=native -Wpedantic
 
 all: bin/predis-server bin/predis bin/parallel-test bin/hashtable-test bin/parallel-hashtable-test bin/random-string-test
 
@@ -16,18 +16,18 @@ tools/cmds.c: cmds.txt
 	gperf --readonly-tables $< > $@
 
 tools/command_parser_hashes.h: tools/cmds.c tools/command_parser_hashgen.c
-	gcc $(CFLAGS) -o tmp/command_parser_hashgen tools/command_parser_hashgen.c && tmp/command_parser_hashgen > tools/command_parser_hashes.h
+	$(CC) $(CFLAGS) -o tmp/command_parser_hashgen tools/command_parser_hashgen.c && tmp/command_parser_hashgen > tools/command_parser_hashes.h
 
 command_parser.c: tools/command_parser_hashes.h tools/cmds.c
 
 lib/hashtable.%.h: lib/hashtable.h
-	gcc -DHT_VAL_TYPE="$*" -E "$<" -o "$@"
+	$(CC) -DHT_VAL_TYPE="$*" -E "$<" -o "$@"
 
 lib/hashtable.%.c: lib/hashtable.c
 	if [ -a "hashtable-shared/$*.h" ]; then \
-		(echo "#include \"hashtable-shared/$*.h\"" && echo "#line 1 \"$(abspath $<)\"" && cat lib/hashtable.c) > "tmp/hashtable.$*.c" && gcc -I. -Ilib/ -DHT_VAL_TYPE="$*" -E "tmp/hashtable.$*.c" -o "$@"; \
+		(echo "#include \"hashtable-shared/$*.h\"" && echo "#line 1 \"$(abspath $<)\"" && cat lib/hashtable.c) > "tmp/hashtable.$*.c" && $(CC) -I. -Ilib/ -DHT_VAL_TYPE="$*" -E "tmp/hashtable.$*.c" -o "$@"; \
 	else \
-		gcc -DHT_VAL_TYPE="$*" -E lib/hashtable.c -o "$@"; \
+		$(CC) -DHT_VAL_TYPE="$*" -E lib/hashtable.c -o "$@"; \
 	fi
 
 PREDIS_PREREQS = predis.c types/*.c lib/hashtable.struct\ main_ele.c lib/hashtable.struct\ main_ele.h dt_hash.c

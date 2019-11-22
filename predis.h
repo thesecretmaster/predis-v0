@@ -5,7 +5,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include "hashtable-shared/struct main_ele.h"
-#define HT_VAL_TYPE struct main_ele
 #include "lib/hashtable.struct main_ele.h"
 
 extern volatile __thread bool *safe;
@@ -23,18 +22,15 @@ struct element_queue {
 
 struct main_struct {
   int size;
-  int counter;
-  volatile int lock;
-  // struct main_ele *elements;
   struct element_queue *deletion_queue;
   struct element_queue *free_list;
   struct thread_info_list *thread_list;
   struct ht_table *hashtable;
-  // struct main_ele *allocation;
-  // int allocation_incr;
-  // int allocation_idx;
-  int thread_list_traversing_count;
-  bool thread_list_write_locked;
+  volatile struct main_ele *allocation;
+  int allocation_incr;
+  volatile int allocation_idx;
+  volatile int thread_list_traversing_count;
+  volatile bool thread_list_write_locked;
 };
 
 struct main_struct* init(int);
