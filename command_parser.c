@@ -35,7 +35,7 @@ char *parse_command(struct main_struct *ms, struct return_val *rval, char **args
     switch (cmd_hsh) {
       case SET_HSH: {
         // printf("set %s %s\n", args[1], args[2]);
-        errors = set("string", ms, "store", args[1], args + 2);
+        errors = set("string", ms, args[1], args + 2);
         // errors = ht_store(ms->hashtable, args[1], idx);
         if (errors != 0) {
           ret_buf_size = snprintf(NULL, 0, "HT_ERROR: %d", errors);
@@ -45,6 +45,60 @@ char *parse_command(struct main_struct *ms, struct return_val *rval, char **args
         } else {
           ret_buf = strdup("OK");
           // ret_buf = print_result(idx, NULL, false);
+        }
+        break;
+      }
+      case LINIT_HSH: {
+        errors = set("linked_list", ms, args[1], args + 2);
+        if (errors != 0) {
+          ret_buf_size = snprintf(NULL, 0, "HT_ERROR: %d", errors);
+          ret_buf = malloc(sizeof(char)*(ret_buf_size + 1));
+          snprintf(ret_buf, ret_buf_size + 1, "HT_ERROR: %d", errors);
+          // del(ms, args[2]);
+        } else {
+          ret_buf = strdup("OK");
+          // ret_buf = print_result(idx, NULL, false);
+        }
+        break;
+      }
+      case LPUSH_HSH: {
+        errors = update("linked_list", "push", ms, args[1], args + 2);
+        if (errors != 0) {
+          ret_buf_size = snprintf(NULL, 0, "HT_ERROR: %d", errors);
+          ret_buf = malloc(sizeof(char)*(ret_buf_size + 1));
+          snprintf(ret_buf, ret_buf_size + 1, "HT_ERROR: %d", errors);
+          // del(ms, args[2]);
+        } else {
+          ret_buf = strdup("OK");
+          // ret_buf = print_result(idx, NULL, false);
+        }
+        break;
+      }
+      case LINDEX_HSH: {
+        errors = get("linked_list", ms, "fetch", rval, args[1], args + 2);
+        if (errors >= 0) {
+          ret_buf = malloc(sizeof(char)*strlen(rval->value) + 1);
+          strcpy(ret_buf, rval->value);
+        } else {
+          // printf("Get error %d\n", errors);
+          ret_buf = print_result(errors, rval, true);
+        }
+        if (errors == 1) {
+          free(rval->value);
+        }
+        break;
+      }
+      case LPOP_HSH: {
+        errors = get("linked_list", ms, "pop", rval, args[1], args + 2);
+        if (errors >= 0) {
+          ret_buf = malloc(sizeof(char)*strlen(rval->value) + 1);
+          strcpy(ret_buf, rval->value);
+        } else {
+          // printf("Get error %d\n", errors);
+          ret_buf = print_result(errors, rval, true);
+        }
+        if (errors == 1) {
+          free(rval->value);
         }
         break;
       }
@@ -71,7 +125,7 @@ char *parse_command(struct main_struct *ms, struct return_val *rval, char **args
         break;
       }
       case DELETE_HSH: {
-        // delete <index>
+        // delete <key>
         // idx = strtol(args[1], NULL, 10);
         errors = del(ms, args[1]);
         ret_buf = print_result(errors, NULL, false);

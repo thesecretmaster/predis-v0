@@ -10,13 +10,6 @@ const static struct updater overwriter = {
   .safe = false
 };
 
-static void *set(int*, char**);
-const static struct setter store = {
-  .name = "store",
-  .func = &set,
-  .safe = false
-};
-
 static int get(struct return_val*, void*, char**);
 const static struct getter fetch = {
   .name = "fetch",
@@ -24,15 +17,20 @@ const static struct getter fetch = {
   .safe = false
 };
 
+static void *set(int *errors, char **args);
+
+const static struct getter *getters[] = {&fetch};
+const static struct updater *updaters[] = {&overwriter};
+
 const struct data_type data_type_int = {
   .name = "int",
   .getter_length = 1,
-  .getters = &fetch,
+  .getters = getters,
   .free_ele = &free_ele,
-  .setter_length = 1,
-  .setters = &store,
+  .initializer_safe = false,
+  .initializer = &set,
   .updater_length = 1,
-  .updaters = &overwriter,
+  .updaters = updaters,
   .clone = &clone
 };
 

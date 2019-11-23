@@ -157,7 +157,7 @@ int ht_store(struct ht_table *table, const char *key, HT_VAL_TYPE *value) {
       cas_target.elem = new_element;
       // Simple store, the best case :)
     }
-  } while (!__atomic_compare_exchange(&(bucket->elements[index]), &element, &cas_target, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
+  } while (!__atomic_compare_exchange(&(bucket->elements[index].elem), &element.elem, &cas_target.elem, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
   if (new_bucket_created && old_element_index == new_element_index) {
     return ht_store(table, key, value);
   }

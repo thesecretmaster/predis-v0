@@ -34,7 +34,7 @@ struct main_struct {
 };
 
 struct main_struct* init(int);
-int set(char*, struct main_struct*, char*, char*, char**);
+int set(char*, struct main_struct*, char*, char**);
 int get(char*, struct main_struct*, char*, struct return_val*, char*, char**);
 int update(char*, char*, struct main_struct*, char*, char**);
 int del(struct main_struct*, char*);

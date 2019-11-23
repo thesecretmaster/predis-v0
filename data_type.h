@@ -13,22 +13,16 @@ struct data_type {
   int (*free_ele)(void*);
   int updater_length;
   int getter_length;
-  int setter_length;
-  const struct updater *updaters;
-  const struct setter *setters;
-  const struct getter *getters;
+  const struct updater **updaters;
+  const struct getter **getters;
+  bool initializer_safe;
+  void* (*initializer)(int *errors /* default 0 */, char **args); // Returns the allocated element
 };
 
 struct updater {
   char *name;
   bool safe;
   int (*func)(void **value /* They can change things, but they can't realloc the whole thing */, char **args);
-};
-
-struct setter {
-  char *name;
-  bool safe;
-  void* (*func)(int *errors /* default 0 */, char **args); // Returns the allocated element
 };
 
 struct getter {

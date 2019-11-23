@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sched.h>
@@ -8,6 +7,7 @@
 #define GEN_DT_LL
 #include "types/int.h"
 #include "types/string.h"
+#include "types/linked_list.h"
 #undef GEN_DT_LL
 #include "dt_hash.c"
 
@@ -143,22 +143,15 @@ void deregister_thread(struct main_struct *ms, struct thread_info_list *ti) {
 
 static const struct updater *get_updater(const struct data_type *dt, char *name){
   for (int i = 0; i < dt->updater_length; i++)
-    if (strcmp(dt->updaters[i].name, name) == 0)
-      return dt->updaters + i;
-  return NULL;
-}
-
-static const struct setter *get_setter(const struct data_type *dt, char *name){
-  for (int i = 0; i < dt->setter_length; i++)
-    if (strcmp(dt->setters[i].name, name) == 0)
-      return dt->setters + i;
+    if (strcmp(dt->updaters[i]->name, name) == 0)
+      return dt->updaters[i];
   return NULL;
 }
 
 static const struct getter *get_getter(const struct data_type *dt, char *name){
   for (int i = 0; i < dt->getter_length; i++)
-    if (strcmp(dt->getters[i].name, name) == 0)
-      return dt->getters + i;
+    if (strcmp(dt->getters[i]->name, name) == 0)
+      return dt->getters[i];
   return NULL;
 }
 
@@ -182,7 +175,7 @@ static const struct data_type* getDataType(const struct data_type** dt_list, int
 }
 
 // Errors:
-int set(char* dt_name, struct main_struct* ms, char* setter_name, char* key, char **args) {
+int set(char* dt_name, struct main_struct* ms, char* key, char **args) {
   int dt_max = DATA_TYPE_COUNT;
   const struct data_type** dt_list = data_types;
   const struct data_type *dt = getDataType(dt_list, dt_max, dt_name);
@@ -217,13 +210,8 @@ int set(char* dt_name, struct main_struct* ms, char* setter_name, char* key, cha
     }
     val->pending_delete = false;
     val->type = dt;
-    const struct setter *setter = get_setter(dt, setter_name);
-    if (setter == NULL) {
-      // Cleanup val and stuff
-      return -2;
-    }
     int errors = 0;
-    val->ptr = setter->func(&errors, args);
+    val->ptr = dt->initializer(&errors, args);
     if (errors != 0) {
       // Cleanup val and stuff
       return errors;
@@ -242,6 +230,7 @@ int set(char* dt_name, struct main_struct* ms, char* setter_name, char* key, cha
 // -5: Element is not set
 int get(char* dt_name, struct main_struct* ms, char *getter_name, struct return_val* rval, char *key, char **args) {
   // if (idx < 0 || idx > ms->size) { return -4; }
+  if (key == NULL) { return -6; }
   __atomic_store_n(safe, false, __ATOMIC_SEQ_CST);
   // struct main_ele *ele = ms->elements + idx;
   struct main_ele *ele = ht_find(ms->hashtable, key);

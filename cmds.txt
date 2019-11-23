@@ -5,3 +5,7 @@ get
 update
 delete
 clean
+lpush
+lindex
+linit
+lpop
