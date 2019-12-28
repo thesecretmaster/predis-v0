@@ -72,7 +72,12 @@ bin/random-string-test: tests/random-string-test.c lib/random_string.c
 bin/hashtable-test: tests/hashtable-test.c tmp/hashtable.int.o lib/random_string.c
 	$(CC) -g $(CFLAGS) -o $@ $^
 
-.PHONY: clean htest ptest serve clean_hard
+bin/linked_list_test: tests/linked_list_test.c types/linked_list.c
+	$(CC) -g $(CFLAGS) -o $@ $^ -pthread
+
+.PHONY: clean htest ptest serve clean_hard do_nothing
+
+do_nothing:
 
 serve: bin/predis-server
 	$<
