@@ -2,7 +2,7 @@ SHELL = bash
 CC = clang # gcc
 CFLAGS = -Wall -g -ggdb -pg -Ofast -march=native -Wpedantic
 
-all: bin/predis-server bin/predis bin/parallel-test bin/hashtable-test bin/parallel-hashtable-test bin/random-string-test
+all: bin/predis-server bin/predis bin/parallel-test bin/hashtable-test bin/parallel-hashtable-test bin/random-string-test bin/linked_list_test
 
 test: bin/set-clean-test bin/update-test
 
@@ -39,10 +39,10 @@ types/%.c: types/%.h types/ll_boilerplate.h types/template.h types/type_ll.h
 tmp/types.%.o: types/%.c
 	$(CC) $(CFLAGS) $< -c -o $@
 
-build_typeo: do_nothing
-	make `echo types/*.c | sed "s/types\/\([^\.]*\)\.c/tmp\/types.\1.o/g"`
+tmp/remake_types: types/*.c
+	touch $@ && make -s `echo $^ | sed "s/types\/\([^\.]*\)\.c/tmp\/types.\1.o/g"`
 
-PREDIS_PREREQS = predis.c build_typeo types/*.c tmp/hashtable.struct\ main_ele.o lib/hashtable.struct\ main_ele.h dt_hash.c
+PREDIS_PREREQS = predis.c tmp/remake_types tmp/hashtable.struct\ main_ele.o lib/hashtable.struct\ main_ele.h dt_hash.c
 PREDIS_DEPS = predis.c tmp/types.*.o "tmp/hashtable.struct main_ele.o"
 
 bin/set-clean-test: tests/set-clean-test.c $(PREDIS_PREREQS)
@@ -72,7 +72,7 @@ bin/random-string-test: tests/random-string-test.c lib/random_string.c
 bin/hashtable-test: tests/hashtable-test.c tmp/hashtable.int.o lib/random_string.c
 	$(CC) -g $(CFLAGS) -o $@ $^
 
-bin/linked_list_test: tests/linked_list_test.c types/linked_list.c
+bin/linked_list_test: tests/linked_list_test.c lib/linked_list.c
 	$(CC) -g $(CFLAGS) -o $@ $^ -pthread
 
 .PHONY: clean htest ptest serve clean_hard do_nothing
@@ -89,7 +89,7 @@ htest: bin/hashtable-test
 	$<
 
 clean:
-	rm -f bin/* cmds.c types/names.txt dt_hash.c command_parser_hashes.h tmp/command_parser_hashgen lib/hashtable.*.{c,h} tools/cmds.c tools/command_parser_hashes.h tmp/types.*.o tmp/hashtable.*.o
+	rm -f bin/* cmds.c types/names.txt dt_hash.c command_parser_hashes.h tmp/command_parser_hashgen lib/hashtable.*.{c,h} tools/cmds.c tools/command_parser_hashes.h tmp/types.*.o tmp/hashtable.*.o tmp/remake_types
 
 clean_hard: clean
 	rm -f perf.* gmon.out tmp/* vgcore.*

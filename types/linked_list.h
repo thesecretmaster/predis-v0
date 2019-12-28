@@ -1,29 +1,17 @@
-#include <stdbool.h>
+#include "type_ll.h"
 
-struct llval {
-  int thread_num;
-  int ctr;
-};
+#undef DT_FULL_NAME
+#undef DT_LL_FULL_NAME
+#define DT_FULL_NAME data_type_linked_list
+#define DT_LL_FULL_NAME dt_ll_linked_list
 
-struct linked_list_elem {
-  struct linked_list_elem * volatile next;
-  struct linked_list_elem * volatile prev;
-  volatile unsigned int refcount;
-  volatile bool delete_lock;
-  struct llval value;
-};
+extern const struct data_type DT_FULL_NAME;
 
-struct linked_list;
+#include "ll_boilerplate.h"
 
-/* __inline__ */ int get_length(struct linked_list *ll);
-/* __inline__ */ struct llval *get_value(struct linked_list_elem*);
-/* __inline__ */ struct linked_list_elem* get_tail(struct linked_list *ll);
-/* __inline__ */ struct linked_list_elem* get_head(struct linked_list *ll);
-/* __inline__ */ struct linked_list_elem* get_next(struct linked_list *ll, struct linked_list_elem *elem);
-/* __inline__ */ struct linked_list_elem* get_prev(struct linked_list *ll, struct linked_list_elem *elem);
-/* __inline__ */ void release(struct linked_list *ll, struct linked_list_elem *elem);
+#ifdef GEN_DT_LL
 
-int insert_after(struct linked_list *ll, struct linked_list_elem *prev, struct llval value);
-int delete_elem(struct linked_list *ll, struct linked_list_elem *elem);
-int clean(struct linked_list *ll);
-struct linked_list *initialize_ll(void);
+#undef PREV_DT_LL
+#define PREV_DT_LL dt_ll_linked_list
+
+#endif
