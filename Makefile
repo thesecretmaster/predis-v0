@@ -10,10 +10,10 @@ types/names.txt: tools/type_list_gen.sh
 	$< > $@
 
 dt_hash.c: types/names.txt
-	gperf --includes --readonly-tables --hash-function-name=dt_hash --lookup-function-name=dt_valid $< > $@
+	gperf --includes --readonly-tables $< > $@
 
-tools/cmds.c: cmds.txt
-	gperf --readonly-tables $< > $@
+tools/cmds.c: cmds.h cmds.txt
+	echo -e "%{\n$$(cat cmds.h)\n%}\n%%\n$$(cat cmds.txt)" | gperf --readonly-tables > $@
 
 tools/command_parser_hashes.h: tools/cmds.c tools/command_parser_hashgen.c
 	$(CC) $(CFLAGS) -o tmp/command_parser_hashgen tools/command_parser_hashgen.c && tmp/command_parser_hashgen > tools/command_parser_hashes.h
@@ -30,8 +30,20 @@ lib/hashtable.%.c: lib/hashtable.c
 		$(CC) -DHT_VAL_TYPE="$*" -E lib/hashtable.c -o "$@"; \
 	fi
 
-PREDIS_PREREQS = predis.c types/*.c lib/hashtable.struct\ main_ele.c lib/hashtable.struct\ main_ele.h dt_hash.c
-PREDIS_DEPS = predis.c types/*.c "lib/hashtable.struct main_ele.c"
+tmp/hashtable.%.o: #lib/hashtable.%.c
+	make "lib/hashtable.$*.c" && \
+	$(CC) $(CFLAGS) "lib/hashtable.$*.c" -c -o "$@"
+
+types/%.c: types/%.h types/ll_boilerplate.h types/template.h types/type_ll.h
+
+tmp/types.%.o: types/%.c
+	$(CC) $(CFLAGS) $< -c -o $@
+
+build_typeo: do_nothing
+	make `echo types/*.c | sed "s/types\/\([^\.]*\)\.c/tmp\/types.\1.o/g"`
+
+PREDIS_PREREQS = predis.c build_typeo types/*.c tmp/hashtable.struct\ main_ele.o lib/hashtable.struct\ main_ele.h dt_hash.c
+PREDIS_DEPS = predis.c tmp/types.*.o "tmp/hashtable.struct main_ele.o"
 
 bin/set-clean-test: tests/set-clean-test.c $(PREDIS_PREREQS)
 	$(CC) $(CFLAGS) -pthread -o $@ $< $(PREDIS_DEPS)
@@ -51,13 +63,13 @@ bin/gen_test_file: tools/gen_test_file.c lib/random_string.c
 bin/parallel-test: tests/parallel-test.c tests/parallel-test-template.c lib/random_string.c
 	$(CC) -g $(CFLAGS) -o $@ $< -lhiredis -lpthread lib/random_string.c
 
-bin/parallel-hashtable-test: tests/parallel-hashtable-test.c tests/parallel-test-template.c lib/random_string.c lib/hashtable.char\ *.c
-	$(CC) -g $(CFLAGS) -o $@ $< -pthread lib/random_string.c lib/hashtable.char\ \*.c
+bin/parallel-hashtable-test: tests/parallel-hashtable-test.c tests/parallel-test-template.c lib/random_string.c tmp/hashtable.char*.o
+	$(CC) -g $(CFLAGS) -o $@ $< -pthread lib/random_string.c tmp/hashtable.char\*.o
 
 bin/random-string-test: tests/random-string-test.c lib/random_string.c
 	$(CC) -g $(CFLAGS) -o $@ $^
 
-bin/hashtable-test: tests/hashtable-test.c lib/hashtable.int.c lib/random_string.c
+bin/hashtable-test: tests/hashtable-test.c tmp/hashtable.int.o lib/random_string.c
 	$(CC) -g $(CFLAGS) -o $@ $^
 
 .PHONY: clean htest ptest serve clean_hard
@@ -72,7 +84,7 @@ htest: bin/hashtable-test
 	$<
 
 clean:
-	rm -f bin/* cmds.c types/names.txt dt_hash.c command_parser_hashes.h tmp/command_parser_hashgen lib/hashtable.*.{c,h} tools/cmds.c tools/command_parser_hashes.h
+	rm -f bin/* cmds.c types/names.txt dt_hash.c command_parser_hashes.h tmp/command_parser_hashgen lib/hashtable.*.{c,h} tools/cmds.c tools/command_parser_hashes.h tmp/types.*.o tmp/hashtable.*.o
 
 clean_hard: clean
 	rm -f perf.* gmon.out tmp/* vgcore.*
