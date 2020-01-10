@@ -24,7 +24,7 @@ struct cinfo {
 };
 
 void consistancy_check_forwards(struct linked_list *ll, int tcnt, int *inconsistant_errors, int *consistancy_errors, unsigned int max_offset) {
-  struct linked_list_elem *e = get_next(ll, get_head(ll), false);
+  struct linked_list_elem *e = get_head(ll);
   bool early_end = false;
   int tctrs[tcnt];
   int ctr = 0;
@@ -32,7 +32,11 @@ void consistancy_check_forwards(struct linked_list *ll, int tcnt, int *inconsist
     tctrs[i] = -1;
   }
   struct linked_list_elem *next;
-  while ((next = get_next(ll, e, true)) != NULL) {
+  while ((next = get_next(ll, e, true)) != get_tail(ll) && next != NULL) {
+    if (next->value.deleteme) {
+      e = next;
+      continue;
+    }
     // if (get_prev(ll, get_next(ll, e)) != e) {
     //   inconsistant_ctr++;
     //   continue;
@@ -40,11 +44,11 @@ void consistancy_check_forwards(struct linked_list *ll, int tcnt, int *inconsist
     //   // printf("Inconsistant (%d)\n", inconsistant_ctr);
     //   *inconsistant_errors += inconsistant_ctr;
     // }
-    if (tctrs[e->value.thread_num] != e->value.ctr && tctrs[e->value.thread_num] != -1) {
-      // printf("Consistancy error\n");
+    if (tctrs[next->value.thread_num] != next->value.ctr && tctrs[next->value.thread_num] != -1) {
+      printf("%s Consistancy error (thread %d, expected %d, got %d (deleted: %s))\n", next->value.ctr > tctrs[next->value.thread_num] ? "GT" : "LT", next->value.thread_num, tctrs[next->value.thread_num], next->value.ctr, next->value.deleteme ? "true" : "false");
       *consistancy_errors = *consistancy_errors + 1;
     }
-    tctrs[e->value.thread_num] = e->value.ctr - 1;
+    tctrs[next->value.thread_num] = next->value.ctr - 1;
     // inconsistant_ctr = 0;
     e = next;
     ctr++;
@@ -54,7 +58,7 @@ void consistancy_check_forwards(struct linked_list *ll, int tcnt, int *inconsist
       break;
     }
   }
-  release(ll, e);
+  release(ll, next);
   if (!early_end) {
     for (int i = 0; i < tcnt; i++) {
       if (tctrs[i] != -1) {
@@ -67,11 +71,12 @@ void consistancy_check_forwards(struct linked_list *ll, int tcnt, int *inconsist
 void consistancy_check_reverse(struct linked_list *ll, int tcnt, int *inconsistant_errors, int *consistancy_errors, volatile int *last_inserted_arr, unsigned int max_offset) {
   struct linked_list_elem *head = get_head(ll);
   struct linked_list_elem *base = head;
+  struct linked_list_elem *tbase;
   for (int i = 0; i < max_offset * 2; i++) {
-    if (base == get_tail(ll)) {
+    if ((tbase = get_next(ll, base, true)) == get_tail(ll)) {
       break;
     }
-    base = get_next(ll, base, true);
+    base = tbase;
   }
   struct linked_list_elem *prev;
   int counters[tcnt];
@@ -81,6 +86,16 @@ void consistancy_check_reverse(struct linked_list *ll, int tcnt, int *inconsista
   int retries = 0;
   bool autorel = true;
   while ((prev = get_prev(ll, base, autorel)) != head) {
+    if (prev == NULL) {
+      autorel = false;
+      continue;
+    } else {
+      autorel = true;
+    }
+    if (prev->value.deleteme) {
+      base = prev;
+      continue;
+    }
     if (counters[prev->value.thread_num] == -9) {
       counters[prev->value.thread_num] = prev->value.ctr;
     }
@@ -91,7 +106,7 @@ void consistancy_check_reverse(struct linked_list *ll, int tcnt, int *inconsista
       retries++;
       if (retries < 100000) {
         release(ll, prev);
-        printf("Retrying (%d, %d)\n", counters[prev->value.thread_num], prev->value.ctr);
+        // printf("Retrying (%d, %d)\n", counters[prev->value.thread_num], prev->value.ctr);
         autorel = false;
         sched_yield();
         continue;
@@ -179,11 +194,44 @@ void *consistancy_check_reverse_thread(void *_info) {
   return NULL;
 }
 
+void *deleter_thread(void *_info) {
+  struct cinfo *info = _info;
+  struct linked_list *ll = info->ll;
+  struct linked_list_elem *after_node;
+  struct linked_list_elem *before_node;
+  struct llval value;
+  int delctr = 0;
+  value.deleteme = true;
+  value.ctr = -5;
+  value.thread_num = -1;
+  while (*info->done < 0) {
+    after_node = get_next(ll, get_head(ll), true);
+    before_node = get_prev(ll, clone_ref(ll, after_node), true);
+    if (before_node == NULL) {
+      continue;
+    }
+    delctr++;
+    insert_after(ll, before_node, value);
+    release(ll, before_node);
+    sched_yield();
+    while (after_node != get_head(ll) && !after_node->value.deleteme) {
+      after_node = get_prev(ll, after_node, true);
+    }
+    delete_elem(ll, after_node);
+    release(ll, after_node);
+  }
+  printf("%d delete tests\n", delctr);
+  __atomic_add_fetch(info->done, 1, __ATOMIC_SEQ_CST);
+  return NULL;
+}
+
 void *appender_thread(void *_info) {
   struct tinfo *info = _info;
   struct linked_list_elem *start;
   unsigned int max_offset = info->max_offset;
   int offset;
+  int failed_inserts = 0;
+  int successful_inserts = 0;
   // int check_offset = ((CHECK_FREQ / 10) / 2) - (rand() % (CHECK_FREQ / 10));
   struct linked_list *ll = info->ll;
   struct llval values;
@@ -192,6 +240,7 @@ void *appender_thread(void *_info) {
   for (int i = 0; i < info->put_count; i++) {
     values.ctr = i;
     values.thread_num = info->tnum;
+    values.deleteme = false;
     // sched_yield();
     // if (i % (CHECK_FREQ + check_offset) == 0) {
     //   consistancy_check(ll, info->tnum, i - 1);
@@ -202,19 +251,29 @@ void *appender_thread(void *_info) {
     finish_early = false;
     for (int j = 0; j < offset; j++) {
       tmpstart = get_next(ll, start, true);
-      if (tmpstart->value.thread_num == info->tnum || tmpstart == get_tail(ll)) {
+      if (tmpstart == NULL || tmpstart == get_tail(ll) || tmpstart->value.thread_num == info->tnum) {
         release(ll, tmpstart);
         finish_early = true;
         break;
       }
       start = tmpstart;
     }
-    insert_after(ll, start, values);
+    if (start == NULL) {
+      continue;
+    }
+    if (insert_after(ll, start, values) != 0) {
+      i -= 1;
+      failed_inserts++;
+      continue;
+    } else {
+      successful_inserts++;
+    }
     if (!finish_early) {
       release(ll, start);
     }
     *info->last_inserted = i;
   }
+  printf("%d failed / %d sucessful inserts\n", failed_inserts, successful_inserts);
   return NULL;
 }
 
@@ -245,7 +304,9 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  thread_cnt = thread_cnt > 3 ? thread_cnt - 2 : thread_cnt;
+  thread_cnt = thread_cnt > 4 ? thread_cnt - 3 : thread_cnt;
+
+  printf("%d threads...\n", thread_cnt);
 
   struct linked_list *ll = initialize_ll();
   struct cinfo cinf;
@@ -262,6 +323,7 @@ int main(int argc, char *argv[]) {
   struct tinfo *info;
   pthread_t cinf_fore_tid;
   pthread_t cinf_rev_tid;
+  pthread_t cinf_del_tid;
   pthread_t tids[thread_cnt];
   for (int i = 0; i < thread_cnt; i++) {
     info = malloc(sizeof(struct tinfo));
@@ -274,41 +336,57 @@ int main(int argc, char *argv[]) {
   }
   pthread_create(&cinf_fore_tid, NULL, consistancy_check_forewards_thread, &cinf);
   pthread_create(&cinf_rev_tid, NULL, consistancy_check_reverse_thread, &cinf);
+  pthread_create(&cinf_del_tid, NULL, deleter_thread, &cinf);
   for (int i = 0; i < thread_cnt; i++) {
     pthread_join(tids[i], NULL);
   }
   *cinf.done = 0;
+  pthread_join(cinf_del_tid, NULL);
+  printf("FORE AND REV\n");
   pthread_join(cinf_fore_tid, NULL);
   pthread_join(cinf_rev_tid, NULL);
-  while (*cinf.done < 2) {}
+  printf("ALL JOINED\n");
+  while (*cinf.done < 3) {}
   struct linked_list_elem *ptr = get_next(ll, get_head(ll), false);
-  int *foreward_order = malloc(sizeof(int) * thread_put_count * thread_cnt * 2);
+  int *foreward_order = malloc(sizeof(int) * (thread_put_count * thread_cnt * 2 + 10 /* delete thread padding */));
   int i = 0;
   struct linked_list_elem *next;
-  while ((next = get_next(ll, ptr, true)) != NULL) {
-    foreward_order[i*2 + 0] = ptr->value.thread_num;
-    foreward_order[i*2 + 1] = ptr->value.ctr;
+  while ((next = get_next(ll, ptr, true)) != get_tail(ll)) {
+    if (next->value.deleteme == true) {
+      ptr = next;
+      continue;
+    }
+    foreward_order[i*2 + 0] = next->value.thread_num;
+    foreward_order[i*2 + 1] = next->value.ctr;
     i++;
     // printf("thread %d, num %d\n", ptr->value[1], ptr->value[0]);
     ptr = next;
   }
   // release(ll, ptr);
   printf("Running integrity test...\n");
-  ptr = get_prev(ll, get_tail(ll), false);
+  ptr = get_tail(ll);
   i--;
   int sadcount = 0;
   struct linked_list_elem *prev;
+  int newpcount = 0;
   while ((prev = get_prev(ll, ptr, true)) != get_head(ll)) {
+    if (prev->value.deleteme == true) {
+      // raise(SIGABRT);
+      ptr = prev;
+      printf("This shouldn't hpappen\n");
+      continue;
+    }
     if (prev->refcount != 1) {
       sadcount++;
       printf("Ewwwww %d\n", prev->refcount);
     }
-    if (ptr->value.thread_num != foreward_order[i*2 + 0] || ptr->value.ctr != foreward_order[i*2 + 1]) {
-      printf("Newp\n");
+    if (prev->value.thread_num != foreward_order[i*2 + 0] || prev->value.ctr != foreward_order[i*2 + 1]) {
+      newpcount++;
     }
     i--;
     ptr = prev;
   }
+  printf("Newp %d\n", newpcount);
   printf("Sadcount: %d\n", sadcount);
   // release(ll, ptr);
   printf("Final consitancy checks...\n");

@@ -73,7 +73,7 @@ bin/hashtable-test: tests/hashtable-test.c tmp/hashtable.int.o lib/random_string
 	$(CC) -g $(CFLAGS) -o $@ $^
 
 bin/linked_list_test: tests/linked_list_test.c lib/linked_list.c
-	$(CC) -g $(CFLAGS) -o $@ $^ -pthread
+	$(CC) -g -o $@ $^ -pthread
 
 .PHONY: clean htest ptest serve clean_hard do_nothing
 

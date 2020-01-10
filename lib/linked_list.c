@@ -64,7 +64,7 @@ struct deleted_linked_list_elem {
 // }
 
 static inline bool marked_as_deleted(struct linked_list_elem *elem) {
-  return ((uintptr_t)elem | 0x1) == 1;
+  return ((uintptr_t)elem & 0x1) == 0x1;
 }
 
 static inline struct linked_list_elem *clear_mark(struct linked_list_elem *elem) {
@@ -72,7 +72,7 @@ static inline struct linked_list_elem *clear_mark(struct linked_list_elem *elem)
 }
 
 static inline struct linked_list_elem* mark_as_deleted(struct linked_list_elem *elem) {
-  return (struct linked_list_elem *)((uintptr_t)elem & 0x1);
+  return (struct linked_list_elem *)((uintptr_t)elem | 0x1);
 }
 
 struct linked_list *initialize_ll(void) {
@@ -96,6 +96,13 @@ struct linked_list *initialize_ll(void) {
   ll->tail->next = NULL;
   ll->head->refcount = 0;
   ll->tail->refcount = 0;
+
+  ll->head->value.thread_num = -7;
+  ll->tail->value.thread_num = -8;
+  ll->head->value.deleteme = false;
+  ll->tail->value.deleteme = false;
+  ll->head->value.ctr = -6;
+  ll->tail->value.ctr = -9;
   return ll;
 }
 
@@ -214,102 +221,171 @@ int clean(struct linked_list *ll) {
 // }
 
 int delete_elem(struct linked_list *ll, struct linked_list_elem *elem) {
+  if (elem == ll->head || elem == ll->tail || elem == NULL) {
+    return -1;
+  }
   struct linked_list_elem *prev;
   struct linked_list_elem *next;
   struct linked_list_elem *dprev;
   struct linked_list_elem *dnext;
-  __atomic_store_n(&elem->delete_lock, true, __ATOMIC_SEQ_CST);
+  // __atomic_store_n(&elem->delete_lock, true, __ATOMIC_SEQ_CST);
   do {
     prev = elem->prev;
     next = elem->next;
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
     if (marked_as_deleted(prev) || marked_as_deleted(next)) {
       return -1; // delete already in progress
     }
-    dprev = mark_as_deleted(elem->prev);
-    dnext = mark_as_deleted(elem->next);
-  } while  (!__atomic_compare_exchange(&elem->prev, &prev, &dprev, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST) ||
-            !__atomic_compare_exchange(&elem->next, &next, &dnext, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
+    dprev = mark_as_deleted(prev);
+    dnext = mark_as_deleted(next);
+    if (__atomic_compare_exchange(&elem->next, &next, &dnext, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
+      if (__atomic_compare_exchange(&elem->prev, &prev, &dprev, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
+        break;
+      } else {
+        // If the first succeeds and the second fails, we'll revert the first before trying again
+        __atomic_compare_exchange(&elem->next, &dnext, &next, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+      }
+    }
+  } while (true);
   // We can actually delete it!
   // First, walk up prevs next pointer
-  while (!__atomic_compare_exchange(&prev->next, &elem, &next, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {}
-  // Then, try to set nexts prev pointer. We don't care if we fail, because that means somebody else has set it.
-  __atomic_compare_exchange(&next->prev, &elem, &prev, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
-
-  while (__atomic_load_n(&elem->prev->delete_lock, __ATOMIC_SEQ_CST)) {}
-  while (__atomic_load_n(&elem->next->delete_lock, __ATOMIC_SEQ_CST)) {}
-  struct deleted_linked_list_elem *dwrap = malloc(sizeof(struct deleted_linked_list_elem));
-  // dwrap->next_live = clear_mark(elem->next);
-  // dwrap->prev_live = clear_mark(elem->prev);
-  dwrap->prev = NULL;
-  dwrap->elem = elem;
-
-  // INCR RW LOCK
-  while (true) {
-    while (__atomic_load_n(&ll->delete_list_lock, __ATOMIC_SEQ_CST)) {}
-    __atomic_add_fetch(&ll->delete_list_ctr, 1, __ATOMIC_SEQ_CST);
-    if (__atomic_load_n(&ll->delete_list_lock, __ATOMIC_SEQ_CST)) {
-      __atomic_add_fetch(&ll->delete_list_ctr, -1, __ATOMIC_SEQ_CST);
-    } else {
-      break;
+  struct linked_list_elem *tmp;
+  unsigned int itrs = 0;
+  struct linked_list_elem *orig_prev = prev;
+  struct linked_list_elem *telem = elem;
+  while (!__atomic_compare_exchange(&prev->next, &telem, &next, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
+    telem = elem;
+    prev = prev->next;
+    itrs++;
+    if (marked_as_deleted(prev)) {
+      prev = orig_prev;
     }
   }
+  telem = elem;
+  // Then, try to set nexts prev pointer. We don't care if we fail, because that means somebody else has set it.
+  __atomic_compare_exchange(&next->prev, &telem, &prev, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
 
-  do {
-    dwrap->next = ll->delete_list_head;
-  } while (!__atomic_compare_exchange(&ll->delete_list_head, &dwrap->next, &dwrap, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
-  if (dwrap->next == NULL /* && ll->delete_list_tail == NULL */) {
-    __atomic_store(&ll->delete_list_tail, &dwrap, __ATOMIC_SEQ_CST);
-  } else if (dwrap->next != NULL) {
-    __atomic_store(&dwrap->next->prev, &dwrap, __ATOMIC_SEQ_CST);
-  }
-  // DINCR RW LOCK
-  __atomic_add_fetch(&ll->delete_list_ctr, -1, __ATOMIC_SEQ_CST);
-  __atomic_store_n(&elem->delete_lock, false, __ATOMIC_SEQ_CST);
+  // while (__atomic_load_n(&prev->delete_lock, __ATOMIC_SEQ_CST)) {}
+  // while (__atomic_load_n(&next->delete_lock, __ATOMIC_SEQ_CST)) {}
+  // struct deleted_linked_list_elem *dwrap = malloc(sizeof(struct deleted_linked_list_elem));
+  // // dwrap->next_live = clear_mark(elem->next);
+  // // dwrap->prev_live = clear_mark(elem->prev);
+  // dwrap->prev = NULL;
+  // dwrap->elem = elem;
+  //
+  // // INCR RW LOCK
+  // while (true) {
+  //   while (__atomic_load_n(&ll->delete_list_lock, __ATOMIC_SEQ_CST)) {}
+  //   __atomic_add_fetch(&ll->delete_list_ctr, 1, __ATOMIC_SEQ_CST);
+  //   if (__atomic_load_n(&ll->delete_list_lock, __ATOMIC_SEQ_CST)) {
+  //     __atomic_add_fetch(&ll->delete_list_ctr, -1, __ATOMIC_SEQ_CST);
+  //   } else {
+  //     break;
+  //   }
+  // }
+  //
+  // do {
+  //   dwrap->next = ll->delete_list_head;
+  // } while (!__atomic_compare_exchange(&ll->delete_list_head, &dwrap->next, &dwrap, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
+  // if (dwrap->next == NULL /* && ll->delete_list_tail == NULL */) {
+  //   __atomic_store(&ll->delete_list_tail, &dwrap, __ATOMIC_SEQ_CST);
+  // } else if (dwrap->next != NULL) {
+  //   __atomic_store(&dwrap->next->prev, &dwrap, __ATOMIC_SEQ_CST);
+  // }
+  // // DINCR RW LOCK
+  // __atomic_add_fetch(&ll->delete_list_ctr, -1, __ATOMIC_SEQ_CST);
+  // __atomic_store_n(&elem->delete_lock, false, __ATOMIC_SEQ_CST);
   return 0;
 }
 
 int insert_after(struct linked_list *ll, struct linked_list_elem *prev, struct llval value) {
+  if (marked_as_deleted(prev) || prev == NULL || prev == ll->tail) {
+    return -10;
+  }
   struct linked_list_elem *ele = malloc(sizeof(struct linked_list_elem));
   ele->refcount = 0;
   ele->delete_lock = false;
   ele->value.thread_num = value.thread_num;
   ele->value.ctr = value.ctr;
+  ele->value.deleteme = value.deleteme;
   struct linked_list_elem *prev_next;
   do {
     prev_next = prev->next;
     // Need to confirm to make sure that if prev was deleted, we don't propogate that deletion to the new element.
     if (marked_as_deleted(prev_next)) {
       // Shoot! Prev was deleted from under us!
-      if (prev == ll->head) {
-        return -1;
-      }
-      prev = prev->prev;
-      continue; // restart loop
+      // In theory we could backtrack or do some magic to recover, but
+      // we can also just fail??
+      return -1;
+      // if (prev == ll->head || prev == NULL) {
+      //   return -1;
+      // }
+      // continue; // restart loop
     }
     ele->next = prev_next;
     ele->prev = prev;
   } while (!__atomic_compare_exchange(&prev->next, &ele->next, &ele, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
   __atomic_add_fetch(&ll->length, 1, __ATOMIC_SEQ_CST);
+  struct linked_list_elem *tprev = prev;
   // Now we have it inserted in the forwards direction. Time to swing the prev pointer.
-  while (!__atomic_compare_exchange(&ele->next->prev, &prev, &ele, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
-    // If the CAS fails, that's OK in every case EXCEPT if there's an insertion after ele s.t. ele->next != next
-    if (ele->next == prev_next) {
-      break;
-    }
-    ele = ele->next;
-  }
+  // while (!__atomic_compare_exchange(&prev_next->prev, &tprev, &ele, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
+  //   // If the CAS fails, that's OK in every case EXCEPT if there's an insertion after ele s.t. ele->next != next
+  //   tprev = prev;
+  //   if (ele->next == prev_next) {
+  //     break;
+  //   }
+  //   // ele = ele->next;
+  // }
+  // Thinking about this as swinging a pointer is wrong. This is an independant
+  // operation which simply fixes prev_next's prev pointer because we've messed
+  // it up.
+  // do {
+  //   prev = prev_next->prev;
+  //   tprev = prev;
+  //   if (marked_as_deleted(tprev) || tprev == ele) {
+  //     break;
+  //   }
+  //   while (tprev->next != prev_next) {
+  //     tprev = tprev->next;
+  //     if (marked_as_deleted(tprev) || tprev == ele || marked_as_deleted(prev_next->next)) {
+  //       break;
+  //     }
+  //   }
+  // } while (!__atomic_compare_exchange(&prev_next->prev, &prev, &tprev, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
+  __atomic_compare_exchange(&prev_next->prev, &prev, &ele, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
   return 0;
 }
 
 /* inline */ void release(struct linked_list *ll, struct linked_list_elem *elem) {
+  if (elem == NULL)
+    return;
   __atomic_add_fetch(&elem->refcount, -1, __ATOMIC_SEQ_CST);
 }
 
+struct linked_list_elem *clone_ref(struct linked_list *ll, struct linked_list_elem *elem) {
+  __atomic_add_fetch(&elem->refcount, 1, __ATOMIC_SEQ_CST);
+  return elem;
+}
+
 /* inline */ struct linked_list_elem* get_next(struct linked_list *ll, struct linked_list_elem *elem, bool autorelease) {
-  struct linked_list_elem *next = elem->next;
+  struct linked_list_elem *next;// = elem->next;
+  struct linked_list_elem *prev;
+  struct linked_list_elem *tprev;
   if (autorelease && elem != ll->head) {
     __atomic_add_fetch(&elem->refcount, -1, __ATOMIC_SEQ_CST);
   }
+  // Follow the prev pointer to the last live elment then step forewards one
+  prev = elem;
+  while (marked_as_deleted(tprev = prev->prev) && clear_mark(prev) != ll->head && clear_mark(tprev) != ll->head) {
+    prev = clear_mark(tprev);
+  }
+  next = clear_mark(clear_mark(prev)->next);
+  // printf("%p (tail)\n", ll->tail);
+  // while (marked_as_deleted(next) && (tnext = clear_mark(next)) != ll->tail) {
+  //   // printf("%p (next)\n%p (cleared next)\n", next, clear_mark(next));
+  //   next = tnext->next;
+  // }
+  // printf("done\n");
   if (next != NULL && next != ll->tail) {
     __atomic_add_fetch(&next->refcount, 1, __ATOMIC_SEQ_CST);
   }
@@ -318,9 +394,80 @@ int insert_after(struct linked_list *ll, struct linked_list_elem *prev, struct l
 
 /* inline */ struct linked_list_elem* get_prev(struct linked_list *ll, struct linked_list_elem *elem, bool autorelease) {
   struct linked_list_elem *prev = elem->prev;
-  while (prev != NULL && prev->next != NULL && prev->next != elem) {
-    prev = prev->next;
+  struct linked_list_elem *telem;
+  // struct linked_list_elem *next;
+  // bool wasdel;
+  //
+  // while (!(wasdel = marked_as_deleted(elem->prev)) && (tprev = clear_mark(prev)->next) != elem && tprev != NULL && prev != NULL) {
+  //   prev = tprev;
+  // }
+  // if (wasdel) {
+  //   return get_prev(ll, get_next(ll, elem, true), autorelease);
+  // }
+
+  // if (elem == ll->head) {
+  //   return elem;
+  // }
+  unsigned int ctr = 0;
+  telem = elem;
+  prev = telem->prev;
+  while (marked_as_deleted(prev)) {
+    ctr++;
+    telem = clear_mark(prev);
+    if (telem == ll->head) {
+      prev = telem;
+      break;
+    }
+    prev = telem->prev;
+    if (ctr > 100000 && ctr % 10000 == 0) {
+      printf("AAAAA %u\n", ctr);
+    }
   }
+
+  // int l1 = 0;
+  // int l2 = 0;
+  // next = elem;
+  // // Walk back until prev is live
+  // while (marked_as_deleted(tprev = next->prev) && (tprev = clear_mark(tprev)) != ll->head) {
+  //   next = tprev;
+  //   l1++;
+  //   if (l1 > 1000000) {
+  //     printf("Yikers\n");
+  //   }
+  // }
+  // prev = tprev;
+  // // Walk forewards until we hit the element or the first live element after it
+  // while (
+  //   (next = clear_mark(prev)->next) != (
+  //     marked_as_deleted(elem->prev) ?
+  //       get_next(ll, clone_ref(ll, elem), false) :
+  //       elem
+  //     ) && prev != NULL && next != NULL) {
+  //   prev = next;
+  //   l2++;
+  //   if (l2 > 1000000) {
+  //     printf("hmmm\n");
+  //   }
+  // }
+
+
+  // if (marked_as_deleted(prev)) {
+  //   while (marked_as_deleted(prev) && clear_mark(prev) != ll->head && prev != NULL) {
+  //     prev = clear_mark(prev)->prev;
+  //   }
+  //   if (marked_as_deleted(prev)) {
+  //     prev = clear_mark(prev);
+  //   }
+  // } else {
+  //   // Walk prev forwards
+  //   // The problem is that at any point we could be deleted and need to abort
+  //   while (prev->next != elem) {
+  //     prev = prev->next;
+  //     if (marked_as_deleted(prev)) {
+  //       return get_prev(ll, elem, autorelease);
+  //     }
+  //   }
+  // }
   if (autorelease && elem != ll->tail && elem != ll->head) {
     __atomic_add_fetch(&elem->refcount, -1, __ATOMIC_SEQ_CST);
   }
