@@ -6,13 +6,7 @@ struct llval {
   bool deleteme;
 };
 
-struct linked_list_elem {
-  struct linked_list_elem * volatile next;
-  struct linked_list_elem * volatile prev;
-  volatile unsigned int refcount;
-  volatile bool delete_lock;
-  struct llval value;
-};
+struct linked_list_elem;
 
 struct linked_list;
 

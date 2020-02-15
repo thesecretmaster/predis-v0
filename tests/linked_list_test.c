@@ -32,11 +32,30 @@ void consistancy_check_forwards(struct linked_list *ll, int tcnt, int *inconsist
     tctrs[i] = -1;
   }
   struct linked_list_elem *next;
+  int from_start = 0;
+  int info[10][3];
+  int info_ctr = 0;
+  bool skipdel = false;
+  struct linked_list_elem *dedo = NULL;
   while ((next = get_next(ll, e, true)) != get_tail(ll) && next != NULL) {
-    if (next->value.deleteme) {
+    info_ctr++;
+    if (info_ctr < 10) {
+      info[info_ctr][0] = get_value(next)->thread_num;
+      info[info_ctr][1] = get_value(next)->deleteme ? -12 : get_value(next)->ctr;
+      info[info_ctr][2] = get_value(next)->deleteme;
+    }
+    if (next == dedo) {
       e = next;
       continue;
+    } else {
+      dedo = next;
     }
+    if (get_value(next)->deleteme) {
+      e = next;
+      skipdel = true;
+      continue;
+    }
+    from_start++;
     // if (get_prev(ll, get_next(ll, e)) != e) {
     //   inconsistant_ctr++;
     //   continue;
@@ -44,11 +63,18 @@ void consistancy_check_forwards(struct linked_list *ll, int tcnt, int *inconsist
     //   // printf("Inconsistant (%d)\n", inconsistant_ctr);
     //   *inconsistant_errors += inconsistant_ctr;
     // }
-    if (tctrs[next->value.thread_num] != next->value.ctr && tctrs[next->value.thread_num] != -1) {
-      printf("%s Consistancy error (thread %d, expected %d, got %d (deleted: %s))\n", next->value.ctr > tctrs[next->value.thread_num] ? "GT" : "LT", next->value.thread_num, tctrs[next->value.thread_num], next->value.ctr, next->value.deleteme ? "true" : "false");
+    if (tctrs[get_value(next)->thread_num] != get_value(next)->ctr && tctrs[get_value(next)->thread_num] != -1) {
+      printf("%s %d Consistancy error (thread %d, expected %d, got %d (deleted: %s), %d from start)\n", get_value(next)->ctr > tctrs[get_value(next)->thread_num] ? "GT" : "LT", get_value(next)->ctr - tctrs[get_value(next)->thread_num], get_value(next)->thread_num, tctrs[get_value(next)->thread_num], get_value(next)->ctr, get_value(next)->deleteme ? "true" : "false", from_start);
+      for (int i = 0; i <= info_ctr && i < 10; i++) {
+        printf("%d: Thread %d, ctr %d (%s)\n", i, info[i][0], info[i][1], info[i][2] ? "true" : "false");
+      }
+      // printf("L: Thread %d, ctr %d (%s)\n", get_value(next)->thread_num, get_value(next)->ctr, get_value(next)->deleteme ? "true" : "false");
       *consistancy_errors = *consistancy_errors + 1;
+    } else if (skipdel) {
+      // printf("Please I want this to print so bad...\n");
+      // skipdel = false;
     }
-    tctrs[next->value.thread_num] = next->value.ctr - 1;
+    tctrs[get_value(next)->thread_num] = get_value(next)->ctr - 1;
     // inconsistant_ctr = 0;
     e = next;
     ctr++;
@@ -92,27 +118,27 @@ void consistancy_check_reverse(struct linked_list *ll, int tcnt, int *inconsista
     } else {
       autorel = true;
     }
-    if (prev->value.deleteme) {
+    if (get_value(prev)->deleteme) {
       base = prev;
       continue;
     }
-    if (counters[prev->value.thread_num] == -9) {
-      counters[prev->value.thread_num] = prev->value.ctr;
+    if (counters[get_value(prev)->thread_num] == -9) {
+      counters[get_value(prev)->thread_num] = get_value(prev)->ctr;
     }
-    if (prev->value.ctr <= last_inserted_arr[prev->value.thread_num]) {
-      counters[prev->value.thread_num] = -10;
+    if (get_value(prev)->ctr <= last_inserted_arr[get_value(prev)->thread_num]) {
+      counters[get_value(prev)->thread_num] = -10;
     }
-    if (counters[prev->value.thread_num] != prev->value.ctr && counters[prev->value.thread_num] != -10) {
+    if (counters[get_value(prev)->thread_num] != get_value(prev)->ctr && counters[get_value(prev)->thread_num] != -10) {
       retries++;
       if (retries < 100000) {
         release(ll, prev);
-        // printf("Retrying (%d, %d)\n", counters[prev->value.thread_num], prev->value.ctr);
+        // printf("Retrying (%d, %d)\n", counters[get_value(prev)->thread_num], get_value(prev)->ctr);
         autorel = false;
         sched_yield();
         continue;
       } else {
-        printf("Too many %d %d\n", counters[prev->value.thread_num], prev->value.ctr);
-        counters[prev->value.thread_num] = prev->value.ctr;
+        printf("Too many %d %d\n", counters[get_value(prev)->thread_num], get_value(prev)->ctr);
+        counters[get_value(prev)->thread_num] = get_value(prev)->ctr;
       }
     }
     autorel = true;
@@ -121,13 +147,13 @@ void consistancy_check_reverse(struct linked_list *ll, int tcnt, int *inconsista
       *consistancy_errors = *consistancy_errors + 1;
       retries = 0;
     }
-    if (counters[prev->value.thread_num] != -10) {
-      counters[prev->value.thread_num] = counters[prev->value.thread_num] + 1;
+    if (counters[get_value(prev)->thread_num] != -10) {
+      counters[get_value(prev)->thread_num] = counters[get_value(prev)->thread_num] + 1;
     }
     base = prev;
   }
   // struct linked_list_elem *e = ll->tail;
-  // e->value.ctr = -1;
+  // get_value(e)->ctr = -1;
   // struct linked_list_elem *prevs[tcnt];
   // // int tctrs[tcnt];
   // // int retries;
@@ -139,7 +165,7 @@ void consistancy_check_reverse(struct linked_list *ll, int tcnt, int *inconsista
   // struct linked_list_elem *pne = NULL;
   // while ((ne = get_prev(ll, e)) != NULL) {
   //   __atomic_thread_fence(__ATOMIC_SEQ_CST);
-  //   if (prevs[ne->value.thread_num]->value.ctr + 1 != ne->value.ctr) {
+  //   if (prevs[get_value(ne)->thread_num]get_value()->ctr + 1 != get_value(ne)->ctr) {
   //     if (pne != ne) {
   //       pne = ne;
   //       continue;
@@ -149,11 +175,11 @@ void consistancy_check_reverse(struct linked_list *ll, int tcnt, int *inconsista
   //   }
   //   if (retries > 0) {
   //     *consistancy_errors = *consistancy_errors + 1;
-  //     printf("Consistancy error (expected %d, got %d) (%d retries)\n", prevs[ne->value.thread_num]->value.ctr, ne->value.ctr, retries);
+  //     printf("Consistancy error (expected %d, got %d) (%d retries)\n", prevs[get_value(ne)->thread_num]get_value()->ctr, get_value(ne)->ctr, retries);
   //     retries = 0;
   //   }
   //   __atomic_thread_fence(__ATOMIC_SEQ_CST);
-  //   prevs[ne->value.thread_num] = ne;
+  //   prevs[get_value(ne)->thread_num] = ne;
   //   e = ne;
   // }
 }
@@ -201,6 +227,8 @@ void *deleter_thread(void *_info) {
   struct linked_list_elem *before_node;
   struct llval value;
   int delctr = 0;
+  int foobar;
+  int baz = 0;
   value.deleteme = true;
   value.ctr = -5;
   value.thread_num = -1;
@@ -208,14 +236,27 @@ void *deleter_thread(void *_info) {
     after_node = get_next(ll, get_head(ll), true);
     before_node = get_prev(ll, clone_ref(ll, after_node), true);
     if (before_node == NULL) {
+      baz++;
+      if (baz > 100) {
+        printf("Bar error\n");
+      }
       continue;
     }
+    baz = 0;
     delctr++;
     insert_after(ll, before_node, value);
     release(ll, before_node);
-    sched_yield();
-    while (after_node != get_head(ll) && !after_node->value.deleteme) {
+    // sched_yield();
+    foobar = 0;
+    while (after_node != get_head(ll) && !get_value(after_node)->deleteme) {
       after_node = get_prev(ll, after_node, true);
+      foobar++;
+      if (foobar > 1 && foobar % 1000 == 0) {
+        printf("Foobar error %d\n", foobar);
+      }
+    }
+    if (foobar >= 1000) {
+      printf("Out foobar\n");
     }
     delete_elem(ll, after_node);
     release(ll, after_node);
@@ -237,7 +278,11 @@ void *appender_thread(void *_info) {
   struct llval values;
   struct linked_list_elem *tmpstart;
   bool finish_early;
+  int retries = 0;
   for (int i = 0; i < info->put_count; i++) {
+    if (retries > 1 && retries % 100 == 0) {
+      printf("Too many retries %d\n", retries);
+    }
     values.ctr = i;
     values.thread_num = info->tnum;
     values.deleteme = false;
@@ -251,7 +296,7 @@ void *appender_thread(void *_info) {
     finish_early = false;
     for (int j = 0; j < offset; j++) {
       tmpstart = get_next(ll, start, true);
-      if (tmpstart == NULL || tmpstart == get_tail(ll) || tmpstart->value.thread_num == info->tnum) {
+      if (tmpstart == NULL || tmpstart == get_tail(ll) || get_value(tmpstart)->thread_num == info->tnum) {
         release(ll, tmpstart);
         finish_early = true;
         break;
@@ -259,15 +304,18 @@ void *appender_thread(void *_info) {
       start = tmpstart;
     }
     if (start == NULL) {
+      retries++;
       continue;
     }
     if (insert_after(ll, start, values) != 0) {
       i -= 1;
       failed_inserts++;
+      retries++;
       continue;
     } else {
       successful_inserts++;
     }
+    retries = 0;
     if (!finish_early) {
       release(ll, start);
     }
@@ -352,14 +400,14 @@ int main(int argc, char *argv[]) {
   int i = 0;
   struct linked_list_elem *next;
   while ((next = get_next(ll, ptr, true)) != get_tail(ll)) {
-    if (next->value.deleteme == true) {
+    if (get_value(next)->deleteme == true) {
       ptr = next;
       continue;
     }
-    foreward_order[i*2 + 0] = next->value.thread_num;
-    foreward_order[i*2 + 1] = next->value.ctr;
+    foreward_order[i*2 + 0] = get_value(next)->thread_num;
+    foreward_order[i*2 + 1] = get_value(next)->ctr;
     i++;
-    // printf("thread %d, num %d\n", ptr->value[1], ptr->value[0]);
+    // printf("thread %d, num %d\n", get_value(ptr)[1], get_value(ptr)[0]);
     ptr = next;
   }
   // release(ll, ptr);
@@ -370,17 +418,18 @@ int main(int argc, char *argv[]) {
   struct linked_list_elem *prev;
   int newpcount = 0;
   while ((prev = get_prev(ll, ptr, true)) != get_head(ll)) {
-    if (prev->value.deleteme == true) {
+    if (get_value(prev)->deleteme == true) {
       // raise(SIGABRT);
       ptr = prev;
       printf("This shouldn't hpappen\n");
       continue;
     }
-    if (prev->refcount != 1) {
-      sadcount++;
-      printf("Ewwwww %d\n", prev->refcount);
-    }
-    if (prev->value.thread_num != foreward_order[i*2 + 0] || prev->value.ctr != foreward_order[i*2 + 1]) {
+    // REFCOUNT NOT EXPOSED
+    // if (prev->refcount != 1) {
+    //   sadcount++;
+    //   printf("Ewwwww %d\n", prev->refcount);
+    // }
+    if (get_value(prev)->thread_num != foreward_order[i*2 + 0] || get_value(prev)->ctr != foreward_order[i*2 + 1]) {
       newpcount++;
     }
     i--;
